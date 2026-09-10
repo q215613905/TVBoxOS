@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center_horizontal" android:orientation="vertical" android:paddingLeft="@dimen/vs_24" android:paddingTop="@dimen/vs_12" android:paddingRight="@dimen/vs_24" android:paddingBottom="@dimen/vs_12">
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="文件传输" android:textColor="@color/color_FFFFFF" android:textSize="@dimen/ts_34" />
+    <ImageView android:id="@+id/ivTransferQr" android:layout_width="@dimen/vs_220" android:layout_height="@dimen/vs_220" android:layout_marginTop="@dimen/vs_8" android:layout_marginBottom="@dimen/vs_8" />
+    <TextView android:id="@+id/tvTransferAddress" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:lineSpacingMultiplier="1.2" android:textColor="@color/color_FFFFFF" android:textSize="@dimen/ts_20" />
+    <ProgressBar android:id="@+id/transferProgress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="@dimen/vs_10" android:layout_marginTop="@dimen/vs_4" android:max="100" />
+    <TextView android:id="@+id/tvTransferStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:text="请在扫码后的网页查看上传进度" android:textColor="@color/color_CCFFFFFF" android:textSize="@dimen/ts_18" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/vs_4" android:text="已上传文件" android:textColor="@color/color_FFFFFF" android:textSize="@dimen/ts_22" />
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:fillViewport="true" android:layout_marginTop="@dimen/vs_4">
+        <LinearLayout android:id="@+id/transferFileList" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
+    </ScrollView>
+</LinearLayout>

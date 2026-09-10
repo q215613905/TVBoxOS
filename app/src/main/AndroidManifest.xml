@@ -74,6 +74,9 @@
         <activity
             android:name=".ui.activity.LocalFileActivity"
             android:screenOrientation="sensorLandscape" />
+        <activity
+            android:name=".ui.activity.TransferActivity"
+            android:screenOrientation="sensorLandscape" />
 
         <service
             android:name=".dlna.DLNACastService"
