@@ -19,6 +19,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.SocketTimeoutException;
 import java.security.cert.CertificateException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.Inflater;
@@ -49,6 +52,8 @@ public class Parser extends BaseDanmakuParser {
     }
 
     private static final long HTTP_TIMEOUT_MS = 20 * 1000L;
+    private static final int INITIAL_BATCH_SIZE = 500;
+    private static final int APPEND_BATCH_SIZE = 1000;
     private static final X509TrustManager TRUST_ALL_CERT = new X509TrustManager() {
         @Override
         public void checkClientTrusted(java.security.cert.X509Certificate[] chain, String authType) throws CertificateException {
@@ -73,17 +78,27 @@ public class Parser extends BaseDanmakuParser {
     private static volatile OkHttpClient UNSAFE_HTTP_CLIENT = buildHttpClient(true);
     private final Danmu danmu;
     private final CancelChecker cancelChecker;
+    private final long initialPosition;
     private float scaleX;
     private float scaleY;
     private int index;
+    private int beforeCursor;
+    private int afterCursor;
+    private boolean initialComplete;
 
     public Parser(String input) {
         this(input, null);
     }
 
     public Parser(String input, CancelChecker cancelChecker) {
+        this(input, cancelChecker, 0);
+    }
+
+    public Parser(String input, CancelChecker cancelChecker, long initialPosition) {
         this.cancelChecker = cancelChecker;
-        this.danmu = Danmu.fromXml(resolveContent(input));
+        this.initialPosition = Math.max(0, initialPosition);
+        this.danmu = Danmu.fromXml(resolveContent(input), this.initialPosition,
+                cancelChecker == null ? null : cancelChecker::isCancelled);
     }
 
     public int getDanmuCount() {
@@ -254,18 +269,49 @@ public class Parser extends BaseDanmakuParser {
 
     @Override
     protected Danmakus parse() {
+        List<Danmu.Data> data = danmu.getData();
+        int start = 0;
+        int end = Math.min(data.size(), start + INITIAL_BATCH_SIZE);
+        beforeCursor = start;
+        afterCursor = end;
+        List<BaseDanmaku> items = createDanmakus(data, start, end);
+        initialComplete = !isCancelled();
+        LOG.i("echo-danmu rendered initial count: " + items.size() + ", pending: " + (data.size() - (end - start)));
         Danmakus result = new Danmakus(IDanmakus.ST_BY_TIME);
-        int renderedCount = 0;
-        for (Danmu.Data data : danmu.getData()) {
-            BaseDanmaku danmaku = createDanmaku(data);
-            if (danmaku == null) continue;
-            synchronized (result.obtainSynchronizer()) {
-                result.addItem(danmaku);
-            }
-            renderedCount++;
-        }
-        LOG.i("echo-danmu rendered count: " + renderedCount);
+        for (BaseDanmaku item : items) result.addItem(item);
         return result;
+    }
+
+    public synchronized boolean hasMoreDanmaku() {
+        return !initialComplete || beforeCursor > 0 || afterCursor < danmu.getData().size();
+    }
+
+    public synchronized List<BaseDanmaku> parseNextBatch() {
+        List<Danmu.Data> data = danmu.getData();
+        int from;
+        int to;
+        if (afterCursor < data.size()) {
+            from = afterCursor;
+            to = Math.min(data.size(), from + APPEND_BATCH_SIZE);
+            afterCursor = to;
+        } else if (beforeCursor > 0) {
+            to = beforeCursor;
+            from = Math.max(0, to - APPEND_BATCH_SIZE);
+            beforeCursor = from;
+        } else {
+            return Collections.emptyList();
+        }
+        return createDanmakus(data, from, to);
+    }
+
+    private List<BaseDanmaku> createDanmakus(List<Danmu.Data> data, int from, int to) {
+        List<BaseDanmaku> items = new ArrayList<>(to - from);
+        for (int i = from; i < to; i++) {
+            if (isCancelled()) break;
+            BaseDanmaku danmaku = createDanmaku(data.get(i));
+            if (danmaku != null) items.add(danmaku);
+        }
+        return items;
     }
 
     @Override
@@ -278,7 +324,7 @@ public class Parser extends BaseDanmakuParser {
 
     private BaseDanmaku createDanmaku(Danmu.Data data) {
         try {
-            String[] values = data.getParam().split(",");
+            String[] values = data.getParam().split(",", 5);
             if (values.length < 4) return null;
             int type = Integer.parseInt(values[1]);
             BaseDanmaku item = mContext.mDanmakuFactory.createDanmaku(type, mContext);
@@ -391,6 +437,7 @@ public class Parser extends BaseDanmakuParser {
 
     private String decodeXmlString(String text) {
         if (TextUtils.isEmpty(text)) return "";
+        if (text.indexOf('&') < 0) return text;
         return text.replace("&amp;", "&")
                 .replace("&quot;", "\"")
                 .replace("&apos;", "'")

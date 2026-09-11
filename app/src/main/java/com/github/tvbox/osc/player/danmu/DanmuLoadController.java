@@ -10,6 +10,7 @@ import com.github.tvbox.osc.util.DanmuHelper;
 import com.github.tvbox.osc.util.LOG;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -38,6 +39,8 @@ public class DanmuLoadController {
     private boolean pendingPrepare;
     private boolean temporarilyClosed;
     private LoadCallback loadCallback;
+    private volatile int seekGeneration;
+    private volatile long pendingSeekPosition = -1;
 
     public DanmuLoadController(MyVideoView videoView, VodController controller, DanmakuView danmuView) {
         this.videoView = videoView;
@@ -46,6 +49,7 @@ public class DanmuLoadController {
         this.danmakuContext = DanmakuContext.create();
         if (this.videoView != null) {
             this.videoView.setDanmuView(this.danmuView);
+            this.videoView.setDanmuSeekListener(this::onDanmuSeek);
         }
         applySettings(false);
     }
@@ -84,6 +88,8 @@ public class DanmuLoadController {
 
     public void check(String danmu, String title, String episode, LoadCallback callback) {
         loadCallback = callback;
+        seekGeneration++;
+        pendingSeekPosition = -1;
         temporarilyClosed = false;
         danmuText = TextUtils.isEmpty(danmu) ? "" : danmu.trim();
         danmuTitle = TextUtils.isEmpty(title) ? "" : title;
@@ -114,6 +120,8 @@ public class DanmuLoadController {
 
     public void reset() {
         DanmakuApi.cancel();
+        seekGeneration++;
+        pendingSeekPosition = -1;
         temporarilyClosed = false;
         danmuText = "";
         danmuTitle = "";
@@ -129,6 +137,8 @@ public class DanmuLoadController {
     public void close() {
         DanmakuApi.cancel();
         loadSeq.incrementAndGet();
+        seekGeneration++;
+        pendingSeekPosition = -1;
         startedSeq = -1;
         pendingPrepare = false;
         releaseView();
@@ -149,6 +159,8 @@ public class DanmuLoadController {
     public void reloadForPlayback() {
         temporarilyClosed = false;
         loadSeq.incrementAndGet();
+        seekGeneration++;
+        pendingSeekPosition = -1;
         startedSeq = -1;
         releaseView();
         pendingPrepare = !TextUtils.isEmpty(danmuText) && DanmuHelper.isOpen();
@@ -156,6 +168,7 @@ public class DanmuLoadController {
 
     public void destroy() {
         reset();
+        if (videoView != null) videoView.setDanmuSeekListener(null);
         if (executor != null) {
             executor.shutdownNow();
             executor = null;
@@ -167,16 +180,28 @@ public class DanmuLoadController {
         pendingPrepare = false;
         int seq = loadSeq.incrementAndGet();
         startedSeq = -1;
+        final int currentSeekGeneration = seekGeneration;
         LOG.i("echo-danmu load title: " + safeLog(danmuTitle) + ", episode: " + safeLog(danmuEpisode) + ", source: " + getSourceSummary(danmu));
         if (executor == null || executor.isShutdown()) {
             executor = Executors.newSingleThreadExecutor();
         }
+        final long initialPosition;
+        if (pendingSeekPosition >= 0) {
+            initialPosition = pendingSeekPosition;
+        } else if (videoView == null) {
+            initialPosition = 0;
+        } else {
+            long currentPosition = videoView.getCurrentPosition();
+            initialPosition = currentPosition > 0 ? currentPosition : videoView.getPlaybackPosition();
+        }
+        LOG.i("echo-danmu parse start at: " + initialPosition);
         executor.execute(() -> {
-            Parser parser = new Parser(danmu, () -> seq != loadSeq.get());
+            Parser currentParser = new Parser(danmu, () -> seq != loadSeq.get(), initialPosition);
             if (seq != loadSeq.get()) return;
-            int danmuCount = parser.getDanmuCount();
+            int danmuCount = currentParser.getDanmuCount();
             LOG.i("echo-danmu parsed count: " + danmuCount);
             if (danmuView == null) return;
+            final Parser preparedParser = currentParser;
             danmuView.post(() -> {
                 if (seq != loadSeq.get() || danmakuContext == null) return;
                 try {
@@ -188,12 +213,13 @@ public class DanmuLoadController {
                         notifyLoadFailed(seq);
                         return;
                     }
-                    danmuView.prepare(parser, danmakuContext);
+                    danmuView.prepare(preparedParser, danmakuContext);
                     clearLoadCallback(seq);
                     danmuView.setVisibility(DanmuHelper.isOpen() ? View.VISIBLE : View.GONE);
                     startIfReady(seq);
                     danmuView.postDelayed(() -> startIfReady(seq), 300);
                     danmuView.postDelayed(() -> startIfReady(seq), 1000);
+                    appendRemaining(preparedParser, seq, currentSeekGeneration);
                 } catch (Throwable th) {
                     LOG.e("echo-danmu prepare error: " + th.getMessage());
                     danmuView.setVisibility(View.GONE);
@@ -201,6 +227,48 @@ public class DanmuLoadController {
                 }
             });
         });
+    }
+
+    private void appendRemaining(Parser parser, int seq, int generation) {
+        appendRemaining(parser, seq, generation, false);
+    }
+
+    private void appendRemaining(Parser parser, int seq, int generation, boolean seekFirstBatch) {
+        if (seq != loadSeq.get() || generation != seekGeneration || !DanmuHelper.isOpen() || !parser.hasMoreDanmaku()) return;
+        if (danmuView == null) return;
+        if (!danmuView.isPrepared()) {
+            danmuView.postDelayed(() -> appendRemaining(parser, seq, generation, seekFirstBatch), 100);
+            return;
+        }
+        if (executor == null || executor.isShutdown()) return;
+        executor.execute(() -> {
+            if (seq != loadSeq.get() || generation != seekGeneration || !DanmuHelper.isOpen() || danmuView == null) return;
+            List<BaseDanmaku> batch = parser.parseNextBatch();
+            if (batch.isEmpty()) return;
+            for (BaseDanmaku item : batch) {
+                if (seq != loadSeq.get() || generation != seekGeneration || !DanmuHelper.isOpen() || danmuView == null) return;
+                danmuView.addDanmaku(item);
+            }
+            LOG.i("echo-danmu appended count: " + batch.size());
+            if (seq == loadSeq.get() && generation == seekGeneration && DanmuHelper.isOpen() && parser.hasMoreDanmaku()) {
+                long delay = seekFirstBatch ? 1000 : 50;
+                danmuView.postDelayed(() -> appendRemaining(parser, seq, generation), delay);
+            }
+        });
+    }
+
+    private void onDanmuSeek(long position) {
+        pendingSeekPosition = Math.max(0, position);
+        seekGeneration++;
+        loadSeq.incrementAndGet();
+        startedSeq = -1;
+        if (DanmuHelper.isOpen() && !TextUtils.isEmpty(danmuText)) {
+            if (isVideoReady()) {
+                prepare(danmuText);
+            } else {
+                pendingPrepare = true;
+            }
+        }
     }
 
     private void clearLoadCallback(int seq) {
