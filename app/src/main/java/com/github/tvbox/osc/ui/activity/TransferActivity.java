@@ -32,6 +32,7 @@ public class TransferActivity extends BaseActivity {
     private String address;
     private ProgressBar progress;
     private TextView status;
+    private String progressName;
     private String fileSignature;
     private final Handler handler = new Handler();
     private final Runnable refresh = new Runnable() { @Override public void run() { loadFiles(); handler.postDelayed(this, 2000); } };
@@ -71,6 +72,7 @@ public class TransferActivity extends BaseActivity {
                 JSONObject object = new JSONObject(value);
                 int percent = object.optInt("progress", 0);
                 String name = object.optString("name", "");
+                progressName = name;
                 progress.setProgress(percent);
                 if (percent > 0 && percent < 100 && name.length() > 0) status.setText("正在上传 " + name + "（" + percent + "%）");
                 else if (percent >= 100) status.setText("最近一次上传完成");
@@ -82,6 +84,16 @@ public class TransferActivity extends BaseActivity {
     private void loadFiles() {
         File dir = RemoteServer.getTransferDirectory();
         File[] fs = dir.listFiles();
+        if (progress.getProgress() > 0 && progressName != null && !progressName.isEmpty() && fs != null) {
+            for (File f : fs) {
+                if (f.isFile() && progressName.equals(f.getName())) {
+                    progressName = "";
+                    progress.setProgress(0);
+                    status.setText("等待网页上传");
+                    break;
+                }
+            }
+        }
         StringBuilder signature = new StringBuilder();
         if (fs != null) for (File f : fs) if (f.isFile()) signature.append(f.getName()).append(':').append(f.length()).append(';');
         if (fileSignature != null && signature.toString().equals(fileSignature)) return;
