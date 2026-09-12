@@ -80,8 +80,11 @@ public class MyVideoView extends VideoView implements DrawHandler.Callback {
     @Override
     public void seekTo(long pos) {
         super.seekTo(pos);
-        if (haveDanmu()) danmuView.seekTo(pos);
-        if (danmuSeekListener != null) danmuSeekListener.onDanmuSeek(pos);
+        if (danmuSeekListener != null) {
+            danmuSeekListener.onDanmuSeek(pos);
+        } else if (haveDanmu()) {
+            danmuView.seekTo(pos);
+        }
     }
 
     @Override

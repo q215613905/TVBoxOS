@@ -110,7 +110,8 @@ public class DanmuLoadController {
     }
 
     public void startIfReady() {
-        if (pendingPrepare && !TextUtils.isEmpty(danmuText) && DanmuHelper.isOpen() && isVideoReady()) {
+        if (pendingPrepare && !TextUtils.isEmpty(danmuText) && DanmuHelper.isOpen()
+                && videoView != null && videoView.isPlaying()) {
             pendingPrepare = false;
             prepare(danmuText);
             return;
@@ -258,16 +259,14 @@ public class DanmuLoadController {
     }
 
     private void onDanmuSeek(long position) {
-        pendingSeekPosition = Math.max(0, position);
+        long targetPosition = Math.max(0, position);
+        pendingSeekPosition = targetPosition;
         seekGeneration++;
         loadSeq.incrementAndGet();
         startedSeq = -1;
         if (DanmuHelper.isOpen() && !TextUtils.isEmpty(danmuText)) {
-            if (isVideoReady()) {
-                prepare(danmuText);
-            } else {
-                pendingPrepare = true;
-            }
+            pendingPrepare = true;
+            if (danmuView != null) danmuView.setVisibility(View.GONE);
         }
     }
 
