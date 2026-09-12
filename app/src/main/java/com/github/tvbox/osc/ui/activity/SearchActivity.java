@@ -217,16 +217,7 @@ public class SearchActivity extends BaseActivity {
                 FastClickCheckUtil.check(view);
                 Movie.Video video = searchAdapter.getData().get(position);
                 if (video != null) {
-                    pauseSearchTasks();
-                    hasKeyBoard = false;
-                    isSearchBack = true;
-                    Bundle bundle = new Bundle();
-                    bundle.putString("id", video.id);
-                    bundle.putString("sourceKey", video.sourceKey);
-                    bundle.putString("title", video.name);
-                    bundle.putString("picture", video.pic);
-                    putDetailFallbackCandidates(bundle, video);
-                    jumpActivity(DetailActivity.class, bundle);
+                    openSearchVideo(video);
                 }
             }
         });
@@ -512,6 +503,53 @@ public class SearchActivity extends BaseActivity {
 
     private void initViewModel() {
         sourceViewModel = new ViewModelProvider(this).get(SourceViewModel.class);
+        sourceViewModel.listResult.observe(this, new androidx.lifecycle.Observer<AbsXml>() {
+            @Override
+            public void onChanged(AbsXml data) {
+                if (!folderLoading) return;
+                folderLoading = false;
+                if (data == null || data.movie == null || data.movie.videoList == null) {
+                    showEmpty();
+                    return;
+                }
+                showSuccess();
+                mGridView.setVisibility(View.VISIBLE);
+                searchAdapter.setNewData(data.movie.videoList);
+            }
+        });
+    }
+
+    private void openSearchVideo(Movie.Video video) {
+        pauseSearchTasks();
+        hasKeyBoard = false;
+        if (TextUtils.equals("folder", video.tag)) {
+            folderHistory.add(new ArrayList<>(searchAdapter.getData()));
+            folderLoading = true;
+            showLoading();
+            sourceViewModel.getList(video.sourceKey, video.id);
+            return;
+        }
+        isSearchBack = true;
+        Bundle bundle = new Bundle();
+        bundle.putString("id", video.id);
+        bundle.putString("sourceKey", video.sourceKey);
+        bundle.putString("title", video.name);
+        bundle.putString("picture", video.pic);
+        putDetailFallbackCandidates(bundle, video);
+        jumpActivity(DetailActivity.class, bundle);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (!folderHistory.isEmpty()) {
+            folderLoading = false;
+            List<Movie.Video> previous = folderHistory.remove(folderHistory.size() - 1);
+            showSuccess();
+            mGridView.setVisibility(View.VISIBLE);
+            searchAdapter.setNewData(previous);
+            return;
+        }
+        super.onBackPressed();
     }
 
     /**
@@ -724,6 +762,8 @@ public class SearchActivity extends BaseActivity {
     private String currentSearchToken = "";
     private boolean searchPaused = false;
     private final List<Movie.Video> detailFallbackSearchResults = new ArrayList<>();
+    private final List<List<Movie.Video>> folderHistory = new ArrayList<>();
+    private boolean folderLoading;
 
     private void searchResult() {
         try {
@@ -747,6 +787,7 @@ public class SearchActivity extends BaseActivity {
             releasedSearchKeys.clear();
             highMatchVods.clear();
             detailFallbackSearchResults.clear();
+            folderHistory.clear();
             showHighMatchResults = false;
             totalSearchCount.set(0);
             currentSearchToken = String.valueOf(searchTokenSeq.incrementAndGet());

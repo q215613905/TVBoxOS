@@ -575,6 +575,100 @@ public class SourceViewModel extends ViewModel {
         }
     }
 
+    /** Loads a folder/category for a specific source (used by inline search folders). */
+    public void getList(String sourceKey, String id) {
+        final SourceBean sourceBean = ApiConfig.get().getSource(sourceKey);
+        if (sourceBean == null || TextUtils.isEmpty(id)) {
+            listResult.postValue(null);
+            return;
+        }
+        final int type = sourceBean.getType();
+        if (type == 3) {
+            spThreadPool.execute(new Runnable() {
+                @Override
+                public void run() {
+                    ExecutorService executor = Executors.newSingleThreadExecutor();
+                    Future<String> future = executor.submit(new Callable<String>() {
+                        @Override
+                        public String call() throws Exception {
+                            Spider sp = ApiConfig.get().getCSP(sourceBean);
+                            return sp.categoryContent(id, "1", true, new HashMap<String, String>());
+                        }
+                    });
+                    String json = null;
+                    try {
+                        json = future.get(sourceBean.getPlayTimeoutSeconds(), TimeUnit.SECONDS);
+//                        LOG.i("echo-getfoderList:"+json);
+                    } catch (Throwable ignored) {
+                        future.cancel(true);
+                    } finally {
+                        executor.shutdown();
+                        if (json != null) {
+                            json(listResult, json, sourceBean.getKey());
+                        } else {
+                            listResult.postValue(null);
+                        }
+                    }
+                }
+            });
+        } else if (type == 0 || type == 1) {
+            OkGo.<String>get(sourceBean.getApi())
+                    .tag(sourceBean.getKey() + "_folder")
+                    .params("ac", type == 0 ? "videolist" : "detail")
+                    .params("t", id)
+                    .params("pg", 1)
+                    .execute(new AbsCallback<String>() {
+                        @Override
+                        public String convertResponse(okhttp3.Response response) throws Throwable {
+                            if (response.body() != null) return response.body().string();
+                            throw new IllegalStateException("网络请求错误");
+                        }
+
+                        @Override
+                        public void onSuccess(Response<String> response) {
+                            if (type == 0) xml(listResult, response.body(), sourceBean.getKey());
+                            else json(listResult, response.body(), sourceBean.getKey());
+                        }
+
+                        @Override
+                        public void onError(Response<String> response) {
+                            super.onError(response);
+                            listResult.postValue(null);
+                        }
+                    });
+        } else if (type == 4) {
+            String extend = getFixUrl(sourceBean.getExt());
+            GetRequest<String> request = OkGo.<String>get(sourceBean.getApi())
+                    .tag(sourceBean.getKey() + "_folder")
+                    .params("ac", "detail")
+                    .params("filter", "true")
+                    .params("t", id)
+                    .params("pg", 1)
+                    .params("ext", Base64.encodeToString("{}".getBytes(), Base64.DEFAULT | Base64.NO_WRAP));
+            if (!TextUtils.isEmpty(extend)) request.params("extend", extend);
+            request.execute(new AbsCallback<String>() {
+                @Override
+                public String convertResponse(okhttp3.Response response) throws Throwable {
+                    if (response.body() != null) return response.body().string();
+                    throw new IllegalStateException("网络请求错误");
+                }
+
+                @Override
+                public void onSuccess(Response<String> response) {
+                    json(listResult, response.body(), sourceBean.getKey());
+                }
+
+                @Override
+                public void onError(Response<String> response) {
+                    super.onError(response);
+                    listResult.postValue(null);
+                }
+            });
+        } else {
+            listResult.postValue(null);
+        }
+    }
+
     interface HomeRecCallback {
         void done(List<Movie.Video> videos);
     }
@@ -829,6 +923,7 @@ public class SourceViewModel extends ViewModel {
             try {
                 Spider sp = ApiConfig.get().getCSP(sourceBean);
                 String search = sp.searchContent(wd, false);
+//                LOG.i("echo--searchContent--result:" + search);
                 if(!TextUtils.isEmpty(search)){
                     json(result, search, sourceBean.getKey(), searchToken);
                 } else {

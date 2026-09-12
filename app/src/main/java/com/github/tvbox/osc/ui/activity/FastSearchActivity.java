@@ -190,14 +190,7 @@ public class FastSearchActivity extends BaseActivity {
                 FastClickCheckUtil.check(view);
                 Movie.Video video = searchAdapter.getData().get(position);
                 if (video != null) {
-                    pauseSearchTasks();
-                    Bundle bundle = new Bundle();
-                    bundle.putString("id", video.id);
-                    bundle.putString("sourceKey", video.sourceKey);
-                    bundle.putString("title", video.name);
-                    bundle.putString("picture", video.pic);
-                    putDetailFallbackCandidates(bundle, video);
-                    jumpActivity(DetailActivity.class, bundle);
+                    openSearchVideo(video, false);
                 }
             }
         });
@@ -227,14 +220,7 @@ public class FastSearchActivity extends BaseActivity {
                 FastClickCheckUtil.check(view);
                 Movie.Video video = searchAdapterFilter.getData().get(position);
                 if (video != null) {
-                    pauseSearchTasks();
-                    Bundle bundle = new Bundle();
-                    bundle.putString("id", video.id);
-                    bundle.putString("sourceKey", video.sourceKey);
-                    bundle.putString("title", video.name);
-                    bundle.putString("picture", video.pic);
-                    putDetailFallbackCandidates(bundle, video);
-                    jumpActivity(DetailActivity.class, bundle);
+                    openSearchVideo(video, true);
                 }
             }
         });
@@ -272,6 +258,89 @@ public class FastSearchActivity extends BaseActivity {
 
     private void initViewModel() {
         sourceViewModel = new ViewModelProvider(this).get(SourceViewModel.class);
+        sourceViewModel.listResult.observe(this, new androidx.lifecycle.Observer<AbsXml>() {
+            @Override
+            public void onChanged(AbsXml data) {
+                if (!folderLoading) return;
+                folderLoading = false;
+                if (data == null || data.movie == null || data.movie.videoList == null) {
+                    showEmpty();
+                    return;
+                }
+                showSuccess();
+                if (folderFilterMode) {
+                    mGridView.setVisibility(View.GONE);
+                    mGridViewFilter.setVisibility(View.VISIBLE);
+                    searchAdapterFilter.setNewData(data.movie.videoList);
+                } else {
+                    mGridViewFilter.setVisibility(View.GONE);
+                    mGridView.setVisibility(View.VISIBLE);
+                    searchAdapter.setNewData(data.movie.videoList);
+                }
+            }
+        });
+    }
+
+    private void openSearchVideo(Movie.Video video, boolean filterMode) {
+        pauseSearchTasks();
+        if (TextUtils.equals("folder", video.tag)) {
+            folderHistory.add(new ArrayList<>(filterMode ? searchAdapterFilter.getData() : searchAdapter.getData()));
+            folderHistoryFilter.add(filterMode);
+            folderHistorySiteKeys.add(getSelectedSearchSiteKey());
+            folderFilterMode = filterMode;
+            folderLoading = true;
+            showLoading();
+            sourceViewModel.getList(video.sourceKey, video.id);
+            return;
+        }
+        Bundle bundle = new Bundle();
+        bundle.putString("id", video.id);
+        bundle.putString("sourceKey", video.sourceKey);
+        bundle.putString("title", video.name);
+        bundle.putString("picture", video.pic);
+        putDetailFallbackCandidates(bundle, video);
+        jumpActivity(DetailActivity.class, bundle);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (!folderHistory.isEmpty()) {
+            String currentSiteKey = getSelectedSearchSiteKey();
+            String folderSiteKey = folderHistorySiteKeys.get(folderHistorySiteKeys.size() - 1);
+            if (!TextUtils.equals(currentSiteKey, folderSiteKey)) {
+                folderLoading = false;
+                folderHistory.clear();
+                folderHistoryFilter.clear();
+                folderHistorySiteKeys.clear();
+                super.onBackPressed();
+                return;
+            }
+            folderLoading = false;
+            List<Movie.Video> previous = folderHistory.remove(folderHistory.size() - 1);
+            boolean filterMode = folderHistoryFilter.remove(folderHistoryFilter.size() - 1);
+            folderHistorySiteKeys.remove(folderHistorySiteKeys.size() - 1);
+            folderFilterMode = filterMode;
+            showSuccess();
+            if (filterMode) {
+                mGridView.setVisibility(View.GONE);
+                mGridViewFilter.setVisibility(View.VISIBLE);
+                searchAdapterFilter.setNewData(previous);
+            } else {
+                mGridViewFilter.setVisibility(View.GONE);
+                mGridView.setVisibility(View.VISIBLE);
+                searchAdapter.setNewData(previous);
+            }
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    private String getSelectedSearchSiteKey() {
+        if (TextUtils.isEmpty(selectedWordName) || TextUtils.equals(selectedWordName, SEARCH_ALL_NAME)) {
+            return SEARCH_ALL_NAME;
+        }
+        String key = spNames.get(selectedWordName);
+        return TextUtils.isEmpty(key) ? selectedWordName : key;
     }
 
     private void filterResult(String spName) {
@@ -509,6 +578,11 @@ public class FastSearchActivity extends BaseActivity {
     private String currentSearchToken = "";
     private boolean searchPaused = false;
     private final List<Movie.Video> detailFallbackSearchResults = new ArrayList<>();
+    private boolean folderFilterMode;
+    private final List<List<Movie.Video>> folderHistory = new ArrayList<>();
+    private final List<Boolean> folderHistoryFilter = new ArrayList<>();
+    private final List<String> folderHistorySiteKeys = new ArrayList<>();
+    private boolean folderLoading;
 
     private void searchResult() {
         try {
@@ -537,6 +611,9 @@ public class FastSearchActivity extends BaseActivity {
             totalSearchCount.set(0);
             timedOutSearchCount.set(0);
             detailFallbackSearchResults.clear();
+            folderHistory.clear();
+            folderHistoryFilter.clear();
+            folderHistorySiteKeys.clear();
             updateSearchStatus();
         }
         List<SourceBean> searchRequestList = new ArrayList<>();
