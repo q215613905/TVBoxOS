@@ -361,25 +361,6 @@ public class ModelSettingFragment extends BaseLazyFragment {
             }
         });
 
-        findViewById(R.id.llUseDemoConfig).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                FastClickCheckUtil.check(v);
-                String demoApi = HawkConfig.DEMO_API_URL;
-                String oldApi = Hawk.get(HawkConfig.API_URL, "");
-                if (!HistoryHelper.isApiLineHistory(demoApi)) {
-                    HistoryHelper.clearApiLineList();
-                }
-                HistoryHelper.setApiHistory(demoApi);
-                Hawk.put(HawkConfig.API_URL, demoApi);
-                tvApi.setText(demoApi);
-                refreshApiLineText();
-                if (!oldApi.equals(demoApi)) {
-                    restartAppAfterConfigChanged();
-                }
-            }
-        });
-
         findViewById(R.id.llApiHistory).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {

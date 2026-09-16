@@ -68,6 +68,4 @@ public class HawkConfig {
     public static final String DANMU_RANDOM_COLOR = "danmu_random_color";
     public static final String DANMU_API = "danmu_api";
     public static boolean hotVodDelete;
-
-    public static final String DEMO_API_URL = "https://example.com/demo.json";
 }
