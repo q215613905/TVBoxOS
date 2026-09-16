@@ -361,6 +361,45 @@ public class ModelSettingFragment extends BaseLazyFragment {
             }
         });
 
+        findViewById(R.id.llUseDemoConfig).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                apiDialog = new ApiDialog(mActivity);
+                ApiDialog dialog = apiDialog;
+                EventBus.getDefault().register(dialog);
+                dialog.setOnListener(new ApiDialog.OnListener() {
+                    @Override
+                    public void onchange(String api) {
+                        String oldApi = Hawk.get(HawkConfig.API_URL, "");
+                        Hawk.put(HawkConfig.API_URL, api);
+                        if (!HistoryHelper.isApiLineHistory(api)) {
+                            HistoryHelper.clearApiLineList();
+                        }
+                        tvApi.setText(api);
+                        refreshApiLineText();
+                        if (!oldApi.equals(api)) {
+                            restartAppAfterConfigChanged();
+                        }
+                    }
+
+                    @Override
+                    public void onLocalConfig(boolean live) {
+                        openLocalConfig(live);
+                    }
+                });
+                dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
+                    @Override
+                    public void onDismiss(DialogInterface dialog) {
+                        ((BaseActivity) mActivity).hideSysBar();
+                        EventBus.getDefault().unregister(dialog);
+                        apiDialog = null;
+                    }
+                });
+                dialog.show();
+            }
+        });
+
         findViewById(R.id.llApiHistory).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
