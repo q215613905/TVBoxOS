@@ -98,6 +98,7 @@ public class ModelSettingFragment extends BaseLazyFragment {
     private TextView tvRecStyleText;
     private TextView tvIjkCachePlay;
     private TextView tvHomeDefaultShow;
+    private TextView tvHomeLayout;
     private ApiDialog apiDialog;
     private boolean selectLocalLive;
     private TextView tvDanmuOpenText;
@@ -150,6 +151,8 @@ public class ModelSettingFragment extends BaseLazyFragment {
         tvHistoryMerge = findViewById(R.id.tvHistoryMerge);
         tvSearchView = findViewById(R.id.tvSearchView);
         tvIjkCachePlay = findViewById(R.id.tvIjkCachePlay);
+        tvHomeLayout = findViewById(R.id.tvHomeLayout);
+        tvHomeLayout.setText(getHomeLayoutName(Hawk.get(HawkConfig.HOME_LAYOUT, 0)));
         tvMediaCodec.setText(Hawk.get(HawkConfig.IJK_CODEC, "硬解码"));
         tvDebugOpen.setText(Hawk.get(HawkConfig.DEBUG_OPEN, false) ? "已打开" : "已关闭");
         tvParseWebView.setText(Hawk.get(HawkConfig.PARSE_WEBVIEW, true) ? "系统自带" : "XWalkView");
@@ -807,6 +810,42 @@ public class ModelSettingFragment extends BaseLazyFragment {
             }
         });
 
+        findViewById(R.id.llHomeLayout).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                int defaultPos = Hawk.get(HawkConfig.HOME_LAYOUT, 0);
+                ArrayList<Integer> types = new ArrayList<>();
+                types.add(0);
+                types.add(1);
+                SelectDialog<Integer> dialog = new SelectDialog<>(mActivity);
+                dialog.setTip("请选择首页布局");
+                dialog.setAdapter(new SelectDialogAdapter.SelectDialogInterface<Integer>() {
+                    @Override
+                    public void click(Integer value, int pos) {
+                        Hawk.put(HawkConfig.HOME_LAYOUT, value);
+                        tvHomeLayout.setText(getHomeLayoutName(value));
+                    }
+
+                    @Override
+                    public String getDisplay(Integer val) {
+                        return getHomeLayoutName(val);
+                    }
+                }, new DiffUtil.ItemCallback<Integer>() {
+                    @Override
+                    public boolean areItemsTheSame(@NonNull @NotNull Integer oldItem, @NonNull @NotNull Integer newItem) {
+                        return oldItem.intValue() == newItem.intValue();
+                    }
+
+                    @Override
+                    public boolean areContentsTheSame(@NonNull @NotNull Integer oldItem, @NonNull @NotNull Integer newItem) {
+                        return oldItem.intValue() == newItem.intValue();
+                    }
+                }, types, defaultPos);
+                dialog.show();
+            }
+        });
+
         findViewById(R.id.llHistoryMerge).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1125,6 +1164,14 @@ public class ModelSettingFragment extends BaseLazyFragment {
             return "文字列表";
         } else {
             return "缩略图";
+        }
+    }
+
+    String getHomeLayoutName(int type) {
+        if (type == 1) {
+            return "紧凑";
+        } else {
+            return "标准";
         }
     }
 }
