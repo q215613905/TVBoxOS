@@ -7,6 +7,8 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.PrintWriter;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.Locale;
 
@@ -18,7 +20,8 @@ import java.util.Locale;
 public class CrashHandler implements Thread.UncaughtExceptionHandler {
 
     private static final String TAG = "CrashHandler";
-    private static final String CRASH_FILE_NAME = "crash.log";
+    private static final String CRASH_DIR_NAME = "crash";
+    private static final int MAX_CRASH_FILES = 5;
     private final Context context;
     private final Thread.UncaughtExceptionHandler defaultHandler;
 
@@ -41,18 +44,25 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
     }
 
     private void saveCrashLog(Thread thread, Throwable throwable) {
-        File dir = context.getFilesDir();
+        File dir = context.getExternalFilesDir(CRASH_DIR_NAME);
         if (dir == null) {
-            dir = context.getExternalFilesDir(null);
+            dir = new File(context.getFilesDir(), CRASH_DIR_NAME);
         }
         if (dir == null) {
             Log.e(TAG, "no writable dir to store crash log, dir=null");
             return;
         }
-        File file = new File(dir, CRASH_FILE_NAME);
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+
+        String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
+        String fileName = "crash-" + timestamp + ".log";
+        File file = new File(dir, fileName);
+
         String time = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault()).format(new Date());
         try {
-            FileWriter writer = new FileWriter(file, true);
+            FileWriter writer = new FileWriter(file, false);
             PrintWriter pw = new PrintWriter(writer);
             pw.println("=================== " + time + " ===================");
             pw.println("Thread: " + thread.getName() + "(" + thread.getId() + ")");
@@ -72,8 +82,27 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
             pw.flush();
             pw.close();
             Log.i(TAG, "crash log saved to " + file.getAbsolutePath());
+            cleanupOldCrashFiles(dir);
         } catch (Throwable e) {
             Log.e(TAG, "failed to save crash log: " + e.getMessage());
+        }
+    }
+
+    private void cleanupOldCrashFiles(File dir) {
+        File[] files = dir.listFiles((d, name) -> name.startsWith("crash-") && name.endsWith(".log"));
+        if (files == null || files.length <= MAX_CRASH_FILES) {
+            return;
+        }
+        Arrays.sort(files, new Comparator<File>() {
+            @Override
+            public int compare(File a, File b) {
+                return Long.compare(a.lastModified(), b.lastModified());
+            }
+        });
+        for (int i = 0; i < files.length - MAX_CRASH_FILES; i++) {
+            if (files[i].delete()) {
+                Log.i(TAG, "deleted old crash log: " + files[i].getName());
+            }
         }
     }
 }
