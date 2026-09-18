@@ -50,6 +50,7 @@ import com.github.tvbox.osc.util.HistoryHelper;
 import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.OkGoHelper;
 import com.github.tvbox.osc.util.PlayerHelper;
+import com.github.tvbox.osc.util.SiteSwitchDialogHelper;
 import com.github.tvbox.osc.viewmodel.SourceViewModel;
 import com.lzy.okgo.OkGo;
 import com.lzy.okgo.callback.FileCallback;
@@ -359,6 +360,21 @@ public class ModelSettingFragment extends BaseLazyFragment {
                     }
                 });
                 dialog.show();
+            }
+        });
+
+        findViewById(R.id.btnVodHome).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                SiteSwitchDialogHelper.show(mActivity);
+            }
+        });
+        findViewById(R.id.btnLiveHome).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                SiteSwitchDialogHelper.show(mActivity);
             }
         });
 
