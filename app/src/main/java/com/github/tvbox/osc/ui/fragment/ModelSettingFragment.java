@@ -62,6 +62,8 @@ import com.hjq.permissions.Permission;
 import com.hjq.permissions.XXPermissions;
 
 import org.greenrobot.eventbus.EventBus;
+import org.greenrobot.eventbus.Subscribe;
+import org.greenrobot.eventbus.ThreadMode;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
@@ -106,6 +108,7 @@ public class ModelSettingFragment extends BaseLazyFragment {
     private TextView tvHomeLayout;
     private ApiDialog apiDialog;
     private boolean selectLocalLive;
+    private boolean eventBusRegistered = false;
     private TextView tvDanmuOpenText;
     private TextView tvDanmuApiText;
 
@@ -850,6 +853,8 @@ public class ModelSettingFragment extends BaseLazyFragment {
 
         findViewById(R.id.llIjkCachePlay).setOnClickListener((view -> onClickIjkCachePlay(view)));
         findViewById(R.id.llClearCache).setOnClickListener((view -> onClickClearCache(view)));
+
+        registerEventBus();
     }
 
     private void restartAppAfterConfigChanged() {
@@ -1171,6 +1176,48 @@ public class ModelSettingFragment extends BaseLazyFragment {
     public void onDestroyView() {
         super.onDestroyView();
         SettingActivity.callback = null;
+    }
+
+    @Override
+    protected void onFragmentResume() {
+        syncAddressRows(true);
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        unregisterEventBus();
+    }
+
+    @Subscribe(threadMode = ThreadMode.MAIN, sticky = false)
+    public void onAddressChanged(RefreshEvent event) {
+        if (event.type == RefreshEvent.TYPE_API_URL_CHANGE
+                || event.type == RefreshEvent.TYPE_LIVE_API_URL_CHANGE) {
+            syncAddressRows(false);
+        }
+    }
+
+    private void syncAddressRows(boolean force) {
+        if (etVodAddress != null && (force || !etVodAddress.hasFocus())) {
+            etVodAddress.setText(Hawk.get(HawkConfig.API_URL, ""));
+        }
+        if (etLiveAddress != null && (force || !etLiveAddress.hasFocus())) {
+            etLiveAddress.setText(Hawk.get(HawkConfig.LIVE_API_URL, ""));
+        }
+    }
+
+    private void registerEventBus() {
+        if (!eventBusRegistered) {
+            EventBus.getDefault().register(this);
+            eventBusRegistered = true;
+        }
+    }
+
+    private void unregisterEventBus() {
+        if (eventBusRegistered) {
+            EventBus.getDefault().unregister(this);
+            eventBusRegistered = false;
+        }
     }
 
     String getHomeRecName(int type) {
