@@ -378,6 +378,76 @@ public class ModelSettingFragment extends BaseLazyFragment {
             }
         });
 
+        findViewById(R.id.btnVodHistory).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                ArrayList<String> history = Hawk.get(HawkConfig.API_HISTORY, new ArrayList<String>());
+                if (history.isEmpty()) {
+                    Toast.makeText(mContext, "点播历史为空", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                String current = Hawk.get(HawkConfig.API_URL, "");
+                int idx = 0;
+                if (history.contains(current))
+                    idx = history.indexOf(current);
+                ApiHistoryDialog dialog = new ApiHistoryDialog(mActivity);
+                dialog.setTip("点播历史配置");
+                dialog.setAdapter(new ApiHistoryDialogAdapter.SelectDialogInterface() {
+                    @Override
+                    public void click(String value) {
+                        String oldApi = Hawk.get(HawkConfig.API_URL, "");
+                        if (!HistoryHelper.isApiLineHistory(value)) {
+                            HistoryHelper.clearApiLineList();
+                        }
+                        Hawk.put(HawkConfig.API_URL, value);
+                        etVodAddress.setText(value);
+                        dialog.dismiss();
+                        if (!oldApi.equals(value)) {
+                            restartAppAfterConfigChanged();
+                        }
+                    }
+
+                    @Override
+                    public void del(String value, ArrayList<String> data) {
+                        Hawk.put(HawkConfig.API_HISTORY, data);
+                    }
+                }, history, idx);
+                dialog.show();
+            }
+        });
+        findViewById(R.id.btnLiveHistory).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                ArrayList<String> history = Hawk.get(HawkConfig.LIVE_API_HISTORY, new ArrayList<String>());
+                if (history.isEmpty()) {
+                    Toast.makeText(mContext, "直播历史为空", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                String current = Hawk.get(HawkConfig.LIVE_API_URL, "");
+                int idx = 0;
+                if (history.contains(current))
+                    idx = history.indexOf(current);
+                ApiHistoryDialog dialog = new ApiHistoryDialog(mActivity);
+                dialog.setTip("直播历史配置");
+                dialog.setAdapter(new ApiHistoryDialogAdapter.SelectDialogInterface() {
+                    @Override
+                    public void click(String value) {
+                        Hawk.put(HawkConfig.LIVE_API_URL, value);
+                        etLiveAddress.setText(value);
+                        dialog.dismiss();
+                    }
+
+                    @Override
+                    public void del(String value, ArrayList<String> data) {
+                        Hawk.put(HawkConfig.LIVE_API_HISTORY, data);
+                    }
+                }, history, idx);
+                dialog.show();
+            }
+        });
+
         findViewById(R.id.llMediaCodec).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
