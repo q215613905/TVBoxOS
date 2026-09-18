@@ -90,7 +90,6 @@ public class ModelSettingFragment extends BaseLazyFragment {
     private EditText etLiveAddress;
     private String initialVodApi;
     private String initialLiveApi;
-    private int liveLoadRequestId = 0;
     private TextView tvHomeApi;
     private TextView tvDns;
     private TextView tvHomeRec;
@@ -405,7 +404,7 @@ public class ModelSettingFragment extends BaseLazyFragment {
                         etVodAddress.setText(value);
                         dialog.dismiss();
                         if (!oldApi.equals(value)) {
-                            Toast.makeText(mContext, "点播地址已保存，重启 App 后生效", Toast.LENGTH_SHORT).show();
+                            restartAppAfterConfigChanged();
                         }
                     }
 
@@ -438,7 +437,6 @@ public class ModelSettingFragment extends BaseLazyFragment {
                         Hawk.put(HawkConfig.LIVE_API_URL, value);
                         etLiveAddress.setText(value);
                         dialog.dismiss();
-                        reloadLiveConfig();
                     }
 
                     @Override
@@ -983,7 +981,6 @@ public class ModelSettingFragment extends BaseLazyFragment {
             HistoryHelper.clearApiLineList();
         }
         HistoryHelper.setApiHistory(newApi);
-        Toast.makeText(mContext, "点播地址已保存，重启 App 后生效", Toast.LENGTH_SHORT).show();
     }
 
     private void saveLiveAddress() {
@@ -995,28 +992,6 @@ public class ModelSettingFragment extends BaseLazyFragment {
         if (!newLiveApi.isEmpty()) {
             HistoryHelper.setLiveApiHistory(newLiveApi);
         }
-        reloadLiveConfig();
-    }
-
-    private void reloadLiveConfig() {
-        final int requestId = ++liveLoadRequestId;
-        ApiConfig.get().loadLiveConfig(false, new ApiConfig.LoadConfigCallback() {
-            @Override
-            public void success() {
-                if (requestId != liveLoadRequestId) return;
-            }
-
-            @Override
-            public void error(String msg) {
-                if (requestId != liveLoadRequestId) return;
-                Toast.makeText(mContext, msg, Toast.LENGTH_SHORT).show();
-            }
-
-            @Override
-            public void notice(String msg) {
-                if (requestId != liveLoadRequestId) return;
-            }
-        });
     }
 
     private void openLocalConfig(boolean live) {
