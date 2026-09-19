@@ -4,12 +4,15 @@
     android:layout_height="wrap_content"
     android:background="@drawable/shape_user_focus"
     android:focusable="true"
-    android:padding="@dimen/vs_1">
+    android:padding="@dimen/vs_2">
 
     <FrameLayout
         android:id="@+id/mItemFrame"
         android:layout_width="@dimen/vs_214"
-        android:layout_height="@dimen/vs_280">
+        android:layout_height="@dimen/vs_280"
+        android:background="@drawable/shape_rounded_corner"
+        android:clipChildren="true"
+        android:clipToPadding="true">
 
         <ImageView
             android:id="@+id/ivThumb"

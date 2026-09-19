@@ -1,6 +1,7 @@
 package com.github.tvbox.osc.ui.fragment;
 
 import android.content.DialogInterface;
+import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -9,7 +10,11 @@ import android.os.Environment;
 import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
 import android.os.Handler;
+import android.view.KeyEvent;
 import android.view.View;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -45,6 +50,7 @@ import com.github.tvbox.osc.util.HistoryHelper;
 import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.OkGoHelper;
 import com.github.tvbox.osc.util.PlayerHelper;
+import com.github.tvbox.osc.util.SiteSwitchDialogHelper;
 import com.github.tvbox.osc.viewmodel.SourceViewModel;
 import com.lzy.okgo.OkGo;
 import com.lzy.okgo.callback.FileCallback;
@@ -56,6 +62,8 @@ import com.hjq.permissions.Permission;
 import com.hjq.permissions.XXPermissions;
 
 import org.greenrobot.eventbus.EventBus;
+import org.greenrobot.eventbus.Subscribe;
+import org.greenrobot.eventbus.ThreadMode;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
@@ -80,11 +88,10 @@ public class ModelSettingFragment extends BaseLazyFragment {
     private TextView tvPlay;
     private TextView tvRender;
     private TextView tvScale;
-    private TextView tvApi;
-    private TextView tvApiLine;
-    private View llApi;
-    private View llApiHistory;
-    private View llApiLine;
+    private EditText etVodAddress;
+    private EditText etLiveAddress;
+    private String initialVodApi;
+    private String initialLiveApi;
     private TextView tvHomeApi;
     private TextView tvDns;
     private TextView tvHomeRec;
@@ -98,8 +105,10 @@ public class ModelSettingFragment extends BaseLazyFragment {
     private TextView tvRecStyleText;
     private TextView tvIjkCachePlay;
     private TextView tvHomeDefaultShow;
+    private TextView tvHomeLayout;
     private ApiDialog apiDialog;
     private boolean selectLocalLive;
+    private boolean eventBusRegistered = false;
     private TextView tvDanmuOpenText;
     private TextView tvDanmuApiText;
 
@@ -138,11 +147,8 @@ public class ModelSettingFragment extends BaseLazyFragment {
         tvPlay = findViewById(R.id.tvPlay);
         tvRender = findViewById(R.id.tvRenderType);
         tvScale = findViewById(R.id.tvScaleType);
-        llApi = findViewById(R.id.llApi);
-        llApiHistory = findViewById(R.id.llApiHistory);
-        llApiLine = findViewById(R.id.llApiLine);
-        tvApi = findViewById(R.id.tvApi);
-        tvApiLine = findViewById(R.id.tvApiLine);
+        etVodAddress = findViewById(R.id.etVodAddress);
+        etLiveAddress = findViewById(R.id.etLiveAddress);
         tvHomeApi = findViewById(R.id.tvHomeApi);
         tvDns = findViewById(R.id.tvDns);
         tvHomeRec = findViewById(R.id.tvHomeRec);
@@ -150,11 +156,14 @@ public class ModelSettingFragment extends BaseLazyFragment {
         tvHistoryMerge = findViewById(R.id.tvHistoryMerge);
         tvSearchView = findViewById(R.id.tvSearchView);
         tvIjkCachePlay = findViewById(R.id.tvIjkCachePlay);
+        tvHomeLayout = findViewById(R.id.tvHomeLayout);
+        tvHomeLayout.setText(getHomeLayoutName(Hawk.get(HawkConfig.HOME_LAYOUT, 0)));
         tvMediaCodec.setText(Hawk.get(HawkConfig.IJK_CODEC, "硬解码"));
         tvDebugOpen.setText(Hawk.get(HawkConfig.DEBUG_OPEN, false) ? "已打开" : "已关闭");
         tvParseWebView.setText(Hawk.get(HawkConfig.PARSE_WEBVIEW, true) ? "系统自带" : "XWalkView");
-        tvApi.setText(Hawk.get(HawkConfig.API_URL, ""));
-        refreshApiLineText();
+        etVodAddress.setText(Hawk.get(HawkConfig.API_URL, ""));
+        etLiveAddress.setText(Hawk.get(HawkConfig.LIVE_API_URL, ""));
+        initAddressRows();
 
         tvDns.setText(OkGoHelper.dnsHttpsList.get(Hawk.get(HawkConfig.DOH_URL, 0)));
         tvHomeRec.setText(getHomeRecName(Hawk.get(HawkConfig.HOME_REC, HawkConfig.DEFAULT_HOME_REC)));
@@ -319,7 +328,7 @@ public class ModelSettingFragment extends BaseLazyFragment {
                 dialog.show();
             }
         });
-        findViewById(R.id.llApi).setOnClickListener(new View.OnClickListener() {
+        findViewById(R.id.llUseDemoConfig).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 FastClickCheckUtil.check(v);
@@ -334,8 +343,7 @@ public class ModelSettingFragment extends BaseLazyFragment {
                         if (!HistoryHelper.isApiLineHistory(api)) {
                             HistoryHelper.clearApiLineList();
                         }
-                        tvApi.setText(api);
-                        refreshApiLineText();
+                        etVodAddress.setText(api);
                         if (!oldApi.equals(api)) {
                             restartAppAfterConfigChanged();
                         }
@@ -358,18 +366,36 @@ public class ModelSettingFragment extends BaseLazyFragment {
             }
         });
 
-        findViewById(R.id.llApiHistory).setOnClickListener(new View.OnClickListener() {
+        findViewById(R.id.btnVodHome).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                SiteSwitchDialogHelper.show(mActivity);
+            }
+        });
+        findViewById(R.id.btnLiveHome).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                SiteSwitchDialogHelper.show(mActivity);
+            }
+        });
+
+        findViewById(R.id.btnVodHistory).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
                 ArrayList<String> history = Hawk.get(HawkConfig.API_HISTORY, new ArrayList<String>());
-                if (history.isEmpty())
+                if (history.isEmpty()) {
+                    Toast.makeText(mContext, "点播历史为空", Toast.LENGTH_SHORT).show();
                     return;
+                }
                 String current = Hawk.get(HawkConfig.API_URL, "");
                 int idx = 0;
                 if (history.contains(current))
                     idx = history.indexOf(current);
                 ApiHistoryDialog dialog = new ApiHistoryDialog(mActivity);
-                dialog.setTip("历史配置列表");
+                dialog.setTip("点播历史配置");
                 dialog.setAdapter(new ApiHistoryDialogAdapter.SelectDialogInterface() {
                     @Override
                     public void click(String value) {
@@ -378,10 +404,7 @@ public class ModelSettingFragment extends BaseLazyFragment {
                             HistoryHelper.clearApiLineList();
                         }
                         Hawk.put(HawkConfig.API_URL, value);
-                        Hawk.put(HawkConfig.LIVE_API_URL, value);
-                        HistoryHelper.setLiveApiHistory(value);
-                        tvApi.setText(value);
-                        refreshApiLineText();
+                        etVodAddress.setText(value);
                         dialog.dismiss();
                         if (!oldApi.equals(value)) {
                             restartAppAfterConfigChanged();
@@ -396,53 +419,37 @@ public class ModelSettingFragment extends BaseLazyFragment {
                 dialog.show();
             }
         });
-
-        findViewById(R.id.llApiLine).setOnClickListener(new View.OnClickListener() {
+        findViewById(R.id.btnLiveHistory).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                ArrayList<String> apiLines = Hawk.get(HawkConfig.API_LINE_LIST, new ArrayList<String>());
-                if (apiLines.isEmpty()) {
-                    Toast.makeText(mContext, "线路列表为空", Toast.LENGTH_SHORT).show();
+                FastClickCheckUtil.check(v);
+                ArrayList<String> history = Hawk.get(HawkConfig.LIVE_API_HISTORY, new ArrayList<String>());
+                if (history.isEmpty()) {
+                    Toast.makeText(mContext, "直播历史为空", Toast.LENGTH_SHORT).show();
                     return;
                 }
-                String current = Hawk.get(HawkConfig.API_URL, "");
+                String current = Hawk.get(HawkConfig.LIVE_API_URL, "");
                 int idx = 0;
-                for (int i = 0; i < apiLines.size(); i++) {
-                    if (current.equals(HistoryHelper.getApiLineUrl(apiLines.get(i)))) {
-                        idx = i;
-                        break;
-                    }
-                }
-                SelectDialog<String> dialog = new SelectDialog<>(mActivity);
-                dialog.setTip("线路选择");
-                dialog.setAdapter(new SelectDialogAdapter.SelectDialogInterface<String>() {
+                if (history.contains(current))
+                    idx = history.indexOf(current);
+                ApiHistoryDialog dialog = new ApiHistoryDialog(mActivity);
+                dialog.setTip("直播历史配置");
+                dialog.setAdapter(new ApiHistoryDialogAdapter.SelectDialogInterface() {
                     @Override
-                    public void click(String value, int pos) {
-                        String newApi = HistoryHelper.getApiLineUrl(value);
-                        String oldApi = Hawk.get(HawkConfig.API_URL, "");
-                        if (newApi.isEmpty()) {
-                            return;
-                        }
-                        Hawk.put(HawkConfig.API_URL, newApi);
-                        Hawk.put(HawkConfig.LIVE_API_URL, newApi);
-                        HistoryHelper.setLiveApiHistory(newApi);
-                        tvApi.setText(newApi);
-                        refreshApiLineText();
+                    public void click(String value) {
+                        Hawk.put(HawkConfig.LIVE_API_URL, value);
+                        etLiveAddress.setText(value);
                         dialog.dismiss();
-                        if (!oldApi.equals(newApi)) {
-                            restartAppAfterConfigChanged();
-                        }
                     }
 
                     @Override
-                    public String getDisplay(String val) {
-                        return HistoryHelper.getApiLineName(val);
+                    public void del(String value, ArrayList<String> data) {
+                        Hawk.put(HawkConfig.LIVE_API_HISTORY, data);
                     }
-                }, SelectDialogAdapter.stringDiff, apiLines, idx);
+                }, history, idx);
                 dialog.show();
             }
         });
-
 
         findViewById(R.id.llMediaCodec).setOnClickListener(new View.OnClickListener() {
             @Override
@@ -788,6 +795,42 @@ public class ModelSettingFragment extends BaseLazyFragment {
             }
         });
 
+        findViewById(R.id.llHomeLayout).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                int defaultPos = Hawk.get(HawkConfig.HOME_LAYOUT, 0);
+                ArrayList<Integer> types = new ArrayList<>();
+                types.add(0);
+                types.add(1);
+                SelectDialog<Integer> dialog = new SelectDialog<>(mActivity);
+                dialog.setTip("请选择首页布局");
+                dialog.setAdapter(new SelectDialogAdapter.SelectDialogInterface<Integer>() {
+                    @Override
+                    public void click(Integer value, int pos) {
+                        Hawk.put(HawkConfig.HOME_LAYOUT, value);
+                        tvHomeLayout.setText(getHomeLayoutName(value));
+                    }
+
+                    @Override
+                    public String getDisplay(Integer val) {
+                        return getHomeLayoutName(val);
+                    }
+                }, new DiffUtil.ItemCallback<Integer>() {
+                    @Override
+                    public boolean areItemsTheSame(@NonNull @NotNull Integer oldItem, @NonNull @NotNull Integer newItem) {
+                        return oldItem.intValue() == newItem.intValue();
+                    }
+
+                    @Override
+                    public boolean areContentsTheSame(@NonNull @NotNull Integer oldItem, @NonNull @NotNull Integer newItem) {
+                        return oldItem.intValue() == newItem.intValue();
+                    }
+                }, types, defaultPos);
+                dialog.show();
+            }
+        });
+
         findViewById(R.id.llHistoryMerge).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -810,6 +853,8 @@ public class ModelSettingFragment extends BaseLazyFragment {
 
         findViewById(R.id.llIjkCachePlay).setOnClickListener((view -> onClickIjkCachePlay(view)));
         findViewById(R.id.llClearCache).setOnClickListener((view -> onClickClearCache(view)));
+
+        registerEventBus();
     }
 
     private void restartAppAfterConfigChanged() {
@@ -846,27 +891,6 @@ public class ModelSettingFragment extends BaseLazyFragment {
         }, 2500);
     }
 
-    private void refreshApiLineText() {
-        if (tvApiLine == null) return;
-        ArrayList<String> apiLines = Hawk.get(HawkConfig.API_LINE_LIST, new ArrayList<String>());
-        String current = Hawk.get(HawkConfig.API_URL, "");
-        boolean showLine = HistoryHelper.isApiLineUrl(current);
-        if (llApiLine != null) {
-            llApiLine.setVisibility(showLine ? View.VISIBLE : View.GONE);
-        }
-        updateApiRowWeight(showLine);
-        String lineName = "";
-        if (showLine) {
-            for (String apiLine : apiLines) {
-                if (current.equals(HistoryHelper.getApiLineUrl(apiLine))) {
-                    lineName = HistoryHelper.getApiLineName(apiLine);
-                    break;
-                }
-            }
-        }
-        tvApiLine.setText(lineName);
-    }
-
     private void refreshDanmuApiText() {
         if (tvDanmuApiText == null) return;
         if (DanmakuApi.isUseDefault()) {
@@ -880,20 +904,6 @@ public class ModelSettingFragment extends BaseLazyFragment {
         }
         String config = ApiConfig.get().getDanmaku();
         tvDanmuApiText.setText(config.isEmpty() ? "默认" : "接口");
-    }
-
-    private void updateApiRowWeight(boolean showLine) {
-        if (llApi == null) return;
-        LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) llApi.getLayoutParams();
-        params.weight = showLine ? 1.0f : 3.08f;
-        llApi.setLayoutParams(params);
-        if (llApiHistory != null) {
-            LinearLayout.LayoutParams historyParams = (LinearLayout.LayoutParams) llApiHistory.getLayoutParams();
-            int margin = showLine ? getResources().getDimensionPixelSize(R.dimen.vs_5) : 0;
-            historyParams.rightMargin = margin;
-            historyParams.setMarginEnd(margin);
-            llApiHistory.setLayoutParams(historyParams);
-        }
     }
 
     private void restartApp() {
@@ -910,6 +920,83 @@ public class ModelSettingFragment extends BaseLazyFragment {
         FastClickCheckUtil.check(v);
         Hawk.put(HawkConfig.IJK_CACHE_PLAY, !Hawk.get(HawkConfig.IJK_CACHE_PLAY, false));
         tvIjkCachePlay.setText(Hawk.get(HawkConfig.IJK_CACHE_PLAY, false) ? "开启" : "关闭");
+    }
+
+    private void initAddressRows() {
+        setEditFocusSaveListener(etVodAddress, true);
+        setEditFocusSaveListener(etLiveAddress, false);
+    }
+
+    private void setEditFocusSaveListener(final EditText editText, final boolean vod) {
+        editText.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if (hasFocus) {
+                    if (vod) {
+                        initialVodApi = editText.getText().toString().trim();
+                    } else {
+                        initialLiveApi = editText.getText().toString().trim();
+                    }
+                    editText.setSelection(editText.getText() == null ? 0 : editText.getText().length());
+                    showInputMethod(editText);
+                } else {
+                    if (vod) {
+                        saveVodAddress();
+                    } else {
+                        saveLiveAddress();
+                    }
+                }
+            }
+        });
+        editText.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+            @Override
+            public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
+                if (actionId == EditorInfo.IME_ACTION_DONE
+                        || (actionId == EditorInfo.IME_NULL
+                        && event != null
+                        && event.getAction() == KeyEvent.ACTION_UP
+                        && event.getKeyCode() == KeyEvent.KEYCODE_ENTER)) {
+                    editText.clearFocus();
+                    return true;
+                }
+                return false;
+            }
+        });
+    }
+
+    private void showInputMethod(EditText editText) {
+        InputMethodManager imm = (InputMethodManager) mContext.getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null && !imm.showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT)) {
+            Toast.makeText(mContext, "未检测到输入法", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void saveVodAddress() {
+        String newApi = etVodAddress.getText().toString().trim();
+        if (newApi.equals(initialVodApi)) {
+            return;
+        }
+        if (newApi.isEmpty()) {
+            Toast.makeText(mContext, "点播地址不能为空", Toast.LENGTH_SHORT).show();
+            etVodAddress.setText(initialVodApi);
+            return;
+        }
+        Hawk.put(HawkConfig.API_URL, newApi);
+        if (!HistoryHelper.isApiLineHistory(newApi)) {
+            HistoryHelper.clearApiLineList();
+        }
+        HistoryHelper.setApiHistory(newApi);
+    }
+
+    private void saveLiveAddress() {
+        String newLiveApi = etLiveAddress.getText().toString().trim();
+        if (newLiveApi.equals(initialLiveApi)) {
+            return;
+        }
+        Hawk.put(HawkConfig.LIVE_API_URL, newLiveApi);
+        if (!newLiveApi.isEmpty()) {
+            HistoryHelper.setLiveApiHistory(newLiveApi);
+        }
     }
 
     private void openLocalConfig(boolean live) {
@@ -1091,6 +1178,48 @@ public class ModelSettingFragment extends BaseLazyFragment {
         SettingActivity.callback = null;
     }
 
+    @Override
+    protected void onFragmentResume() {
+        syncAddressRows(true);
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        unregisterEventBus();
+    }
+
+    @Subscribe(threadMode = ThreadMode.MAIN, sticky = false)
+    public void onAddressChanged(RefreshEvent event) {
+        if (event.type == RefreshEvent.TYPE_API_URL_CHANGE
+                || event.type == RefreshEvent.TYPE_LIVE_API_URL_CHANGE) {
+            syncAddressRows(false);
+        }
+    }
+
+    private void syncAddressRows(boolean force) {
+        if (etVodAddress != null && (force || !etVodAddress.hasFocus())) {
+            etVodAddress.setText(Hawk.get(HawkConfig.API_URL, ""));
+        }
+        if (etLiveAddress != null && (force || !etLiveAddress.hasFocus())) {
+            etLiveAddress.setText(Hawk.get(HawkConfig.LIVE_API_URL, ""));
+        }
+    }
+
+    private void registerEventBus() {
+        if (!eventBusRegistered) {
+            EventBus.getDefault().register(this);
+            eventBusRegistered = true;
+        }
+    }
+
+    private void unregisterEventBus() {
+        if (eventBusRegistered) {
+            EventBus.getDefault().unregister(this);
+            eventBusRegistered = false;
+        }
+    }
+
     String getHomeRecName(int type) {
         if (type == 1) {
             return "站点推荐";
@@ -1106,6 +1235,14 @@ public class ModelSettingFragment extends BaseLazyFragment {
             return "文字列表";
         } else {
             return "缩略图";
+        }
+    }
+
+    String getHomeLayoutName(int type) {
+        if (type == 1) {
+            return "紧凑";
+        } else {
+            return "标准";
         }
     }
 }

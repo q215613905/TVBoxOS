@@ -2088,7 +2088,7 @@ public class VodController extends BaseController {
             fillPaint.setColor(Color.WHITE);
             strokePaint.setStyle(Paint.Style.STROKE);
             strokePaint.setStrokeWidth(strokeWidth);
-            strokePaint.setColor(Color.parseColor("#FF4081"));
+            strokePaint.setColor(Color.parseColor("#E50914"));
         }
 
         @Override

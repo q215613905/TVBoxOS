@@ -89,12 +89,17 @@ public class UserFragment extends BaseLazyFragment implements View.OnClickListen
     @Override
     protected void onFragmentResume() {
         super.onFragmentResume();
+        int homeLayout = Hawk.get(HawkConfig.HOME_LAYOUT, 0);
         if (Hawk.get(HawkConfig.HOME_REC_STYLE, false)) {
             tvHotList.setVisibility(View.VISIBLE);
             tvHotList.setHasFixedSize(true);
             int spanCount = 5;
+            if (homeLayout == 1) {
+                spanCount = 6;
+            }
             if(style!=null && Hawk.get(HawkConfig.HOME_REC, HawkConfig.DEFAULT_HOME_REC) == 1)spanCount=ImgUtil.spanCountByStyle(style,spanCount);
             tvHotList.setLayoutManager(new V7GridLayoutManager(this.mContext, spanCount));
+            int spacing = homeLayout == 1 ? getResources().getDimensionPixelSize(R.dimen.vs_6) : getResources().getDimensionPixelSize(R.dimen.vs_10);
             int paddingLeft = -tvHotList.mHorizontalSpacingWithMargins / 2 + getResources().getDimensionPixelSize(R.dimen.vs_6);
             int paddingTop = getResources().getDimensionPixelSize(R.dimen.vs_20);
             int paddingRight = -tvHotList.mHorizontalSpacingWithMargins / 2 + getResources().getDimensionPixelSize(R.dimen.vs_6);

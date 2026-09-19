@@ -265,6 +265,7 @@
             android:clipChildren="true"
             android:clipToPadding="false"
             android:layout_below="@+id/tvUserHome"
+            android:layout_marginTop="@dimen/vs_20"
             app:tv_horizontalSpacingWithMargins="@dimen/vs_10"
             app:tv_selectedItemIsCentered="true"
             app:tv_verticalSpacingWithMargins="@dimen/vs_10"

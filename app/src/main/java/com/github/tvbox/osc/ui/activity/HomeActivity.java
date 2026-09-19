@@ -662,8 +662,6 @@ public class HomeActivity extends BaseActivity {
             unregisterEventBus();
             ControlManager.get().stopServer();
             finish();
-            android.os.Process.killProcess(android.os.Process.myPid());
-            System.exit(0);
         } else {
             // 否则仅提示用户，再按一次退出应用
             mExitTime = System.currentTimeMillis();
