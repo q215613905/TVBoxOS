@@ -1020,7 +1020,7 @@ public class VodController extends BaseController {
         try {
             float speed = (float) mPlayerConfig.getDouble("sp");
             ArrayList<Float> speeds = new ArrayList<>();
-            float[] speedOptions = {0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 3.0f};
+            float[] speedOptions = {0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.25f, 2.5f, 3.0f};
             for (float value : speedOptions) speeds.add(value);
             int defaultPos = speeds.indexOf(speed);
             SelectDialog<Float> dialog = new SelectDialog<>(mActivity);
