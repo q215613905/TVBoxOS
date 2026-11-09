@@ -57,11 +57,9 @@ import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
@@ -100,7 +98,6 @@ public class ApiConfig {
     private final ExecutorService configLoadExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService jarLoadExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService danmuSearchExecutor = Executors.newSingleThreadExecutor();
-    private final Set<String> warmedSearchSpiderKeys = new HashSet<>();
 
     private final String userAgent = "okhttp/3.15";
 
@@ -1469,44 +1466,6 @@ public class ApiConfig {
         }
     }
 
-    public void warmSearchSpiders() {
-        final ArrayList<SourceBean> sources = new ArrayList<>(sourceBeanList.values());
-        final SourceBean home = getHomeSourceBean();
-        final Set<String> sharedSpiderApis = new HashSet<>();
-        Set<String> spiderApis = new HashSet<>();
-        for (SourceBean source : sources) {
-            if (source == null || source.getType() != 3) continue;
-            String spiderApiKey = source.getJar() + "|" + source.getApi();
-            if (!spiderApis.add(spiderApiKey)) sharedSpiderApis.add(spiderApiKey);
-        }
-        configLoadExecutor.execute(new Runnable() {
-            @Override
-            public void run() {
-                LOG.i("echo-warm-spider start");
-                int eligibleCount = 0;
-                for (SourceBean source : sources) {
-                    if (source == null || source.getType() != 3 || !source.isSearchable()) continue;
-                    if (home != null && TextUtils.equals(home.getKey(), source.getKey())) continue;
-                    // 同类 Spider 可能通过静态状态保存 ext，不能在后台预热时交替初始化。
-                    if (sharedSpiderApis.contains(source.getJar() + "|" + source.getApi())) continue;
-                    if (eligibleCount >= 10) break;
-                    eligibleCount++;
-                    String warmKey = source.getKey() + "|" + source.getApi() + "|" + source.getJar() + "|" + source.getExt();
-                    synchronized (warmedSearchSpiderKeys) {
-                        if (warmedSearchSpiderKeys.contains(warmKey)) continue;
-                        warmedSearchSpiderKeys.add(warmKey);
-                    }
-                    try {
-//                        LOG.i("echo-warm-spider load:" + warmKey);
-                        getCSP(source);
-                    } catch (Throwable th) {
-                        LOG.e("echo-warm-search-spider-error " + source.getKey() + ":" + th.getMessage());
-                    }
-                }
-            }
-        });
-    }
-
     public Spider getPyCSP(String url) {
         currentLivePyKey = MD5.string2MD5(url);
         currentLiveSpider = url;
@@ -1834,9 +1793,6 @@ public class ApiConfig {
         jarLoader.clear();
         pyLoader.clear();
         jsLoader.clear();
-        synchronized (warmedSearchSpiderKeys) {
-            warmedSearchSpiderKeys.clear();
-        }
     }
 
     public void clearSpiderCache() {
