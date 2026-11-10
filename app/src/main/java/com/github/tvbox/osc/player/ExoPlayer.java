@@ -1,6 +1,7 @@
 package com.github.tvbox.osc.player;
 
 import android.content.Context;
+import android.os.Handler;
 import android.os.Looper;
 import android.util.Pair;
 
@@ -10,10 +11,12 @@ import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.DefaultLoadControl;
 import com.google.android.exoplayer2.DefaultRenderersFactory;
 import com.google.android.exoplayer2.Format;
+import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.Renderer;
 import com.google.android.exoplayer2.RenderersFactory;
 import com.google.android.exoplayer2.Tracks;
+import com.google.android.exoplayer2.decoder.DecoderCounters;
 import com.google.android.exoplayer2.source.TrackGroup;
 import com.google.android.exoplayer2.source.TrackGroupArray;
 import com.google.android.exoplayer2.text.Cue;
@@ -36,11 +39,49 @@ import xyz.doikki.videoplayer.exo.ExoMediaPlayer;
 
 public class ExoPlayer extends ExoMediaPlayer {
 
+    private static final long BUFFERING_TIMEOUT_MS = 15_000;
+    private static final long RECOVERY_SUCCESS_PROGRESS_MS = 5_000;
     private static AudioTrackMemory memory;
     private volatile long internalSubtitleDelayUs;
     private OnCuesListener onCuesListener;
     private boolean defaultSubtitleTrackSelected;
     private boolean defaultSubtitleTrackSelectionClosed;
+    private Handler bufferingHandler;
+    private boolean vodPlaybackReady;
+    private boolean bufferingRecoveryAttempted;
+    private long bufferingRecoveryReadyPosition = C.TIME_UNSET;
+    private long bufferingPosition;
+    private long bufferingBufferedPosition;
+    private final Runnable bufferingTimeout = new Runnable() {
+        @Override
+        public void run() {
+            if (!shouldCheckBuffering()) return;
+            long position = mInternalPlayer.getCurrentPosition();
+            long bufferedPosition = mInternalPlayer.getBufferedPosition();
+            if (position != bufferingPosition || bufferedPosition > bufferingBufferedPosition) {
+                scheduleBufferingCheck();
+                return;
+            }
+            LOG.i("echo-exo-buffering-stalled position=" + position
+                    + ", buffered=" + bufferedPosition + ", loading=" + mInternalPlayer.isLoading()
+                    + ", speed=" + mInternalPlayer.getPlaybackParameters().speed
+                    + ", totalBuffered=" + mInternalPlayer.getTotalBufferedDuration()
+                    + ", recoveryAttempted=" + bufferingRecoveryAttempted
+                    + ", recoveryReadyPosition=" + bufferingRecoveryReadyPosition);
+            logBufferingDecoders("stalled");
+            if (bufferingRecoveryAttempted) {
+                mInternalPlayer.stop();
+                onPlayerError(new PlaybackException("echo-exo-buffering-stalled-after-recovery", null,
+                        PlaybackException.ERROR_CODE_TIMEOUT));
+                return;
+            }
+            bufferingRecoveryAttempted = true;
+            // 同一次持续卡死只重载一次；确认恢复播放后，后续独立卡顿可以再次恢复。
+            mInternalPlayer.setMediaSource(mMediaSource, position);
+            mInternalPlayer.prepare();
+            mInternalPlayer.setPlayWhenReady(true);
+        }
+    };
 
     public ExoPlayer(Context context) {
         super(context);
@@ -59,6 +100,7 @@ public class ExoPlayer extends ExoMediaPlayer {
     @Override
     public void initPlayer() {
         super.initPlayer();
+        bufferingHandler = new Handler(mInternalPlayer.getApplicationLooper());
         mInternalPlayer.addListener(new Player.Listener() {
             @Override
             public void onTracksChanged(Tracks tracks) {
@@ -69,7 +111,25 @@ public class ExoPlayer extends ExoMediaPlayer {
             public void onPlaybackStateChanged(int playbackState) {
                 if (playbackState == Player.STATE_READY) {
                     defaultSubtitleTrackSelectionClosed = true;
+                    vodPlaybackReady = !mInternalPlayer.isCurrentMediaItemLive()
+                            && mInternalPlayer.isCurrentMediaItemSeekable() && mInternalPlayer.getDuration() > 0;
+                    if (bufferingRecoveryAttempted && bufferingRecoveryReadyPosition == C.TIME_UNSET) {
+                        bufferingRecoveryReadyPosition = mInternalPlayer.getCurrentPosition();
+                    }
+                } else if (playbackState == Player.STATE_BUFFERING && shouldCheckBuffering()) {
+                    logBufferingDecoders("start");
                 }
+                scheduleBufferingCheck();
+            }
+
+            @Override
+            public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
+                scheduleBufferingCheck();
+            }
+
+            @Override
+            public void onPlaybackSuppressionReasonChanged(int playbackSuppressionReason) {
+                scheduleBufferingCheck();
             }
 
             @Override
@@ -85,9 +145,79 @@ public class ExoPlayer extends ExoMediaPlayer {
 
     @Override
     public void setDataSource(String path, Map<String, String> headers) {
+        resetBufferingRecovery();
         defaultSubtitleTrackSelected = false;
         defaultSubtitleTrackSelectionClosed = false;
         super.setDataSource(path, headers);
+    }
+
+    private boolean shouldCheckBuffering() {
+        return mInternalPlayer != null && mMediaSource != null && vodPlaybackReady
+                && mInternalPlayer.getPlaybackState() == Player.STATE_BUFFERING
+                && mInternalPlayer.getPlayWhenReady()
+                && mInternalPlayer.getPlaybackSuppressionReason() == Player.PLAYBACK_SUPPRESSION_REASON_NONE
+                && !mInternalPlayer.isCurrentMediaItemLive();
+    }
+
+    private void scheduleBufferingCheck() {
+        if (bufferingHandler == null) return;
+        bufferingHandler.removeCallbacks(bufferingTimeout);
+        if (!shouldCheckBuffering()) return;
+        bufferingPosition = mInternalPlayer.getCurrentPosition();
+        // READY 可能只短暂出现，必须在 READY 之后实际推进进度，才重置恢复次数。
+        if (bufferingRecoveryAttempted && bufferingRecoveryReadyPosition != C.TIME_UNSET
+                && bufferingPosition - bufferingRecoveryReadyPosition >= RECOVERY_SUCCESS_PROGRESS_MS) {
+            LOG.i("echo-exo-buffering-recovery-succeeded readyPosition=" + bufferingRecoveryReadyPosition
+                    + ", position=" + bufferingPosition);
+            bufferingRecoveryAttempted = false;
+            bufferingRecoveryReadyPosition = C.TIME_UNSET;
+        }
+        bufferingBufferedPosition = mInternalPlayer.getBufferedPosition();
+        bufferingHandler.postDelayed(bufferingTimeout, BUFFERING_TIMEOUT_MS);
+    }
+
+    private void resetBufferingRecovery() {
+        if (bufferingHandler != null) bufferingHandler.removeCallbacks(bufferingTimeout);
+        vodPlaybackReady = false;
+        bufferingRecoveryAttempted = false;
+        bufferingRecoveryReadyPosition = C.TIME_UNSET;
+    }
+
+    private void logBufferingDecoders(String stage) {
+        logBufferingDecoder(stage, "audio", mInternalPlayer.getAudioFormat(), mInternalPlayer.getAudioDecoderCounters());
+        logBufferingDecoder(stage, "video", mInternalPlayer.getVideoFormat(), mInternalPlayer.getVideoDecoderCounters());
+    }
+
+    private void logBufferingDecoder(String stage, String type, Format format, DecoderCounters counters) {
+        String counts = "none";
+        if (counters != null) {
+            counters.ensureUpdated();
+            counts = "queued=" + counters.queuedInputBufferCount + ", rendered=" + counters.renderedOutputBufferCount
+                    + ", skipped=" + counters.skippedOutputBufferCount + ", dropped=" + counters.droppedBufferCount;
+        }
+        LOG.i("echo-exo-buffering-decoder stage=" + stage + ", type=" + type
+                + ", format=" + format + ", counters=" + counts);
+    }
+
+    @Override
+    public void seekTo(long time) {
+        bufferingRecoveryAttempted = false;
+        bufferingRecoveryReadyPosition = C.TIME_UNSET;
+        super.seekTo(time);
+        scheduleBufferingCheck();
+    }
+
+    @Override
+    public void reset() {
+        resetBufferingRecovery();
+        super.reset();
+    }
+
+    @Override
+    public void release() {
+        resetBufferingRecovery();
+        super.release();
+        bufferingHandler = null;
     }
 
     private RenderersFactory buildRenderersFactory(Context context) {
