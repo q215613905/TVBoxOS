@@ -374,6 +374,7 @@ public class ApiConfig {
                 try {
                     okhttp3.Request request = new okhttp3.Request.Builder()
                             .url(requestUrl)
+                            .header("User-Agent", userAgent)
                             .build();
                     okhttp3.OkHttpClient client = OkGoHelper.getDefaultClient();
                     if (client == null) client = com.github.catvod.net.OkHttp.client();
