@@ -1563,6 +1563,7 @@ public class DetailActivity extends BaseActivity {
 
     private String searchTitle = "";
     private boolean hadQuickStart = false;
+    private String quickSearchVodKey = "";
     private final List<Movie.Video> quickSearchData = new ArrayList<>();
     private final List<String> quickSearchWord = new ArrayList<>();
     private ExecutorService searchExecutorService = null;
@@ -1613,44 +1614,17 @@ public class DetailActivity extends BaseActivity {
 
     private void startQuickSearch() {
         initCheckedSourcesForSearch();
-        if (hadQuickStart)
+        String currentVodKey = sourceKey + ":" + vodId;
+        if (hadQuickStart && TextUtils.equals(quickSearchVodKey, currentVodKey))
             return;
         hadQuickStart = true;
+        quickSearchVodKey = currentVodKey;
+        pauseRunnable = null;
         OkGo.getInstance().cancelTag("quick_search");
         quickSearchWord.clear();
         searchTitle = mVideo.name;
         quickSearchData.clear();
         quickSearchWord.addAll(SearchHelper.splitWords(searchTitle));
-        // 分词
-//        OkGo.<String>get("http://api.pullword.com/get.php?source=" + URLEncoder.encode(searchTitle) + "&param1=0&param2=0&json=1")
-//                .tag("fenci")
-//                .execute(new AbsCallback<String>() {
-//                    @Override
-//                    public String convertResponse(okhttp3.Response response) throws Throwable {
-//                        if (response.body() != null) {
-//                            return response.body().string();
-//                        } else {
-//                            throw new IllegalStateException("网络请求错误");
-//                        }
-//                    }
-//
-//                    @Override
-//                    public void onSuccess(Response<String> response) {
-//                        String json = response.body();
-//                        try {
-//                            for (JsonElement je : new Gson().fromJson(json, JsonArray.class)) {
-//                                quickSearchWord.add(je.getAsJsonObject().get("t").getAsString());
-//                            }
-//                        } catch (Throwable th) {
-//                            th.printStackTrace();
-//                        }
-//                        List<String> words = new ArrayList<>(new HashSet<>(quickSearchWord));
-//                        EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_QUICK_SEARCH_WORD, words));
-//                    }
-//
-//                    @Override
-//                    public void onError(Response<String> response) {super.onError(response);}
-//                });
 
         searchResult();
     }

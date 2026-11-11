@@ -1,8 +1,5 @@
 package com.github.catvod.crawler;
 
-import android.os.Build;
-import android.util.Log;
-
 import com.github.catvod.crawler.python.IPyLoader;
 import com.github.tvbox.osc.base.App;
 import com.github.tvbox.osc.util.LOG;
@@ -32,12 +29,8 @@ public class pyLoader implements IPyLoader {
 
     @Override
     public void setConfig(String jsonStr) {
-        if (!isPythonSupported()) {
-            Log.w("PyLoader", "python32 is disabled on Android 16+ 32-bit process.");
-            return;
-        }
         if (jsonStr != null && !jsonStr.equals(lastConfig)) {
-            Log.i("PyLoader", "echo-setConfig 初始化json ");
+            LOG.i("echo-setConfig 初始化json ");
             getPythonLoader().setConfig(jsonStr);
             lastConfig = jsonStr;
         }
@@ -51,22 +44,18 @@ public class pyLoader implements IPyLoader {
 
     @Override
     public synchronized Spider getSpider(String key, String cls, String ext) {
-        if (!isPythonSupported()) {
-            Log.w("PyLoader", "python32 is disabled on Android 16+ 32-bit process.");
-            return new SpiderNull();
-        }
         if (spiders.containsKey(key)) {
-            Log.i("PyLoader", "echo-getSpider spider缓存: " + key);
+            LOG.i("echo-getSpider spider缓存: " + key);
             return spiders.get(key);
         }
         try {
-            Log.i("PyLoader", "echo-getSpider url: " + cls);
+            LOG.i("echo-getSpider url: " + cls);
             Spider sp = getPythonLoader().getSpider(key, cls, ext);
             if (sp == null) return new SpiderNull();
             if (sp instanceof SpiderNull) return sp;
-//            Log.i("PyLoader", "echo-getSpider homeContent: " + sp.homeContent(true));
+//            LOG.i("echo-getSpider homeContent: " + sp.homeContent(true));
             spiders.put(key, sp);
-            Log.i("PyLoader", "echo-getSpider 加载spider: " + key);
+            LOG.i("echo-getSpider 加载spider: " + key);
             return sp;
         } catch (Throwable th) {
             th.printStackTrace();
@@ -81,7 +70,6 @@ public class pyLoader implements IPyLoader {
 
     @Override
     public Object[] proxyInvoke(Map<String, String> params, String key){
-        if (!isPythonSupported()) return null;
         if(key==null || key.isEmpty())return null;
         LOG.i("echo-recentPyKey" + key);
         try {
@@ -103,9 +91,4 @@ public class pyLoader implements IPyLoader {
         return pythonLoader;
     }
 
-    private boolean isPythonSupported() {
-        if (Build.VERSION.SDK_INT < 36) return true;
-        if (Build.VERSION.SDK_INT < 23) return true;
-        return android.os.Process.is64Bit();
-    }
 }

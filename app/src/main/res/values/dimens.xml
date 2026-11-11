@@ -12,6 +12,7 @@
     <dimen name="ts_28">28mm</dimen>
     <dimen name="ts_30">30mm</dimen>
     <dimen name="ts_34">34mm</dimen>
+    <dimen name="ts_36">36mm</dimen>
     <dimen name="ts_40">40mm</dimen>
     <dimen name="ts_50">50mm</dimen>
     <dimen name="ts_100">100mm</dimen>
@@ -41,6 +42,7 @@
     <dimen name="vs_12">12mm</dimen>
     <dimen name="vs_14">14mm</dimen>
     <dimen name="vs_15">15mm</dimen>
+    <dimen name="vs_18">18mm</dimen>
     <dimen name="vs_20">20mm</dimen>
     <dimen name="vs_24">24mm</dimen>
     <dimen name="vs_28">28mm</dimen>
