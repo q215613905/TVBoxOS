@@ -3,6 +3,25 @@ plugins {
     id 'com.chaquo.python'
 }
 
+// Python 解释器探测：环境变量 PYTHON_BIN 优先，其次固定路径/命令，最后兜底系统 python3
+static String findPythonBin() {
+    if (System.getenv("PYTHON_BIN") != null) {
+        return System.getenv("PYTHON_BIN")
+    }
+    def candidates = ["/usr/bin/python3.8", "python3.8", "python3"]
+    for (String c : candidates) {
+        try {
+            Process p = new ProcessBuilder("bash", "-c", "command -v " + c).redirectErrorStream(true).start()
+            p.waitFor()
+            if (p.exitValue() == 0) {
+                return c
+            }
+        } catch (Exception ignored) {
+        }
+    }
+    return "python3"
+}
+
 android {
     compileSdk 33
 
@@ -10,7 +29,7 @@ android {
         minSdkVersion 19
         targetSdkVersion 28
         python {
-            buildPython("D:/Programs/Python/Python38/python.exe")
+            buildPython(findPythonBin())
             pip {
                 install "lxml"
                 install "ujson"

@@ -46,6 +46,8 @@ public class ApiDialog extends BaseDialog {
     private EditText inputApi;
     private EditText inputApiLive;
     private View inputConfirm;
+    private String initialApi;
+    private String initialLiveApi;
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void refresh(RefreshEvent event) {
@@ -69,6 +71,8 @@ public class ApiDialog extends BaseDialog {
         //内置网络接口在此处添加
         inputApi.setText(Hawk.get(HawkConfig.API_URL, ""));
         inputApiLive.setText(Hawk.get(HawkConfig.LIVE_API_URL, Hawk.get(HawkConfig.API_URL)));
+        initialApi = inputApi.getText().toString().trim();
+        initialLiveApi = inputApiLive.getText().toString().trim();
         findViewById(R.id.inputSubmit).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -193,18 +197,18 @@ public class ApiDialog extends BaseDialog {
     private void saveAndDismiss() {
         String newApi = inputApi.getText().toString().trim();
         String newLiveApi = inputApiLive.getText().toString().trim();
-        if (!newApi.isEmpty()) {
+        boolean apiChanged = !newApi.equals(initialApi);
+        boolean liveChanged = !newLiveApi.equals(initialLiveApi);
+        if (apiChanged && !newApi.isEmpty()) {
             HistoryHelper.setApiHistory(newApi);
-            if (!newApi.equals(Hawk.get(HawkConfig.API_URL, newApi))) {
-                inputApiLive.setText(newApi);
-                newLiveApi = newApi;
+            if (listener != null) listener.onchange(newApi);
+        }
+        if (liveChanged) {
+            if (!newLiveApi.isEmpty()) {
+                HistoryHelper.setLiveApiHistory(newLiveApi);
             }
+            Hawk.put(HawkConfig.LIVE_API_URL, newLiveApi);
         }
-        if (!newLiveApi.isEmpty()) {
-            HistoryHelper.setLiveApiHistory(newLiveApi);
-        }
-        Hawk.put(HawkConfig.LIVE_API_URL, newLiveApi);
-        if (listener != null) listener.onchange(newApi);
         dismiss();
     }
 

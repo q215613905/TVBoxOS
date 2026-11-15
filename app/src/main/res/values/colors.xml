@@ -1,56 +1,52 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="color_6200EE">#6200EE</color>
-    <color name="color_3700B3">#3700B3</color>
-    <color name="color_03DAC5">#03DAC5</color>
-    <color name="title_fouse_n">#ffce7900</color>
-    <color name="color_1890FF">#1890FF</color>
-    <color name="color_FFB800">#FF6600</color>
-    <color name="color_00FF0A">#00FF0A</color>
+    <color name="color_6200EE">#E50914</color>
+    <color name="color_3700B3">#B20710</color>
+    <color name="color_03DAC5">#E50914</color>
+    <color name="title_fouse_n">#FFE50914</color>
+    <color name="color_1890FF">#E50914</color>
+    <color name="color_FFB800">#FF6D00</color>
+    <color name="color_00FF0A">#00E676</color>
     <color name="color_CBF46A">#CBF46A</color>
     <color name="color_FF90CA09">#90CA09</color>
-    <color name="color_BD0CADE2">#BD0CADE2</color>
-    <color name="color_FF0057">#FF0057</color>
-    <color name="color_FF5F00">#FF5F00</color>
-    <color name="color_00796B">#00796B</color>
+    <color name="color_BD0CADE2">#BDE50914</color>
+    <color name="color_FF0057">#E50914</color>
+    <color name="color_FF5F00">#FF6D00</color>
+    <color name="color_00796B">#004D40</color>
     <color name="color_FFB6C1">#FFB6C1</color>
-    <color name="color_3D3D3D">#3D3D3D</color>
-    <color name="color_32364E">#32364E</color>
-    <color name="color_6632364E">#6632364E</color>
+    <color name="color_3D3D3D">#1E1E1E</color>
+    <color name="color_32364E">#141414</color>
+    <color name="color_6632364E">#99141414</color>
     <color name="color_CCFFFFFF">#BBFFFFFF</color>
-    <color name="color_0CADE2">#0CADE2</color>
+    <color name="color_0CADE2">#E50914</color>
     <color name="color_6CFFFFFF">#6CFFFFFF</color>
-    <color name="color_66000000">#66000000</color>
-    <color name="color_99000000">#99000000</color>
+    <color name="color_66000000">#99000000</color>
+    <color name="color_99000000">#CC000000</color>
     <color name="color_FFFFFF_50">#80FFFFFF</color>
     <color name="color_CC000000">#CC000000</color>
     <color name="color_000000_30">#48000000</color>
-    <color name="color_02F8E1">#02F8E1</color>
-    <color name="color_353744">#353744</color>
-    <color name="color_CC353744">#CC353744</color>
-    <color name="color_6C3D3D3D">#6c3d3d3d</color>
+    <color name="color_02F8E1">#E50914</color>
+    <color name="color_353744">#1A1A1A</color>
+    <color name="color_CC353744">#CC1A1A1A</color>
+    <color name="color_6C3D3D3D">#6C1E1E1E</color>
     <color name="color_BBFFFFFF">#bbffffff</color>
     <color name="color_FFFFFF">#ffffffff</color>
     <color name="color_33FFFFFF">#33ffffff</color>
     <color name="color_99FFFFFF">#4D000000</color>
-    <color name="color_59353744">#59353744</color>
-    <color name="color_80FF0057">#66FF0057</color>
+    <color name="color_59353744">#591A1A1A</color>
+    <color name="color_80FF0057">#80E50914</color>
     <color name="color_000000_60">#99000000</color>
     <color name="color_dialog_bg">#88000000</color>
     <color name="color_scrollview_bg">#44000000</color>
-    <color name="color_text_primary">#FFFFFAE0</color>
+    <color name="color_text_primary">#FFFFFFFF</color>
 
-    <!-- Unified dialog palette. Change these to update dialog surfaces globally. -->
-    <color name="dialog_panel_bg">#D91D202A</color>
-    <color name="dialog_panel_stroke">#33FFFFFF</color>
-    <color name="dialog_control_bg">#80353744</color>
-    <color name="dialog_control_bg_focused">#CC1890FF</color>
+    <color name="dialog_panel_bg">#E6111111</color>
+    <color name="dialog_panel_stroke">#33E50914</color>
+    <color name="dialog_control_bg">#801A1A1A</color>
+    <color name="dialog_control_bg_focused">#CCE50914</color>
     <color name="dialog_control_stroke">#22FFFFFF</color>
-    <color name="dialog_control_stroke_focused">#CC02F8E1</color>
-    <color name="dialog_input_bg">#66353744</color>
+    <color name="dialog_control_stroke_focused">#CCE50914</color>
+    <color name="dialog_input_bg">#661A1A1A</color>
     <color name="dialog_text_primary">#FFFFFFFF</color>
     <color name="dialog_text_hint">#80FFFFFF</color>
-
-
-
 </resources>

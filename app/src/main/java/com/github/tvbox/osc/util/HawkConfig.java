@@ -45,6 +45,7 @@ public class HawkConfig {
     public static final String SUBTITLE_EXO_POSITION = "subtitle_exo_position";
     public static final String SOURCES_FOR_SEARCH = "checked_sources_for_search";
     public static final String HOME_REC_STYLE = "home_rec_style";
+    public static final String HOME_LAYOUT = "home_layout"; //T8 个性化首页宫格布局本地开关
     public static final String NOW_DATE = "now_date"; //当前日期
     public static final String REMOTE_TVBOX = "remote_tvbox_host";
     public static final String IJK_CACHE_PLAY = "ijk_cache_play";
