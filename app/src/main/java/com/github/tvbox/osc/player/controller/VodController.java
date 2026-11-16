@@ -120,6 +120,8 @@ public class VodController extends BaseController {
                         mTopRoot2.setVisibility(VISIBLE);
                         mPlayLoadNetSpeedRightTop.setVisibility(VISIBLE);
                         if(Hawk.get(HawkConfig.SCREEN_DISPLAY,GONE)==GONE){
+                            tv_screen_display.setVisibility(VISIBLE);
+                            seekTime.setVisibility(VISIBLE);
                             mPlayPauseTime.setVisibility(VISIBLE);
                         }else {
                             net_play_speed.setVisibility(GONE);
@@ -141,6 +143,8 @@ public class VodController extends BaseController {
                             mPlayTitle.setVisibility(GONE);
                         }
                         if(Hawk.get(HawkConfig.SCREEN_DISPLAY,GONE)==GONE){
+                            tv_screen_display.setVisibility(GONE);
+                            seekTime.setVisibility(GONE);
                             mPlayPauseTime.setVisibility(GONE);
                         }else {
                             net_play_speed.setVisibility(VISIBLE);
