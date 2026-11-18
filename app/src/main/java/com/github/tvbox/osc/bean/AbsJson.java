@@ -21,7 +21,7 @@ public class AbsJson implements Serializable {
 
 
     public class AbsJsonVod implements Serializable {
-        public int group_id; //: 0
+        public String group_id; //: 0
         public String type_id; //: 32
         public int type_id_1; //: 31
         public String type_name; //: "国产剧"
