@@ -38,6 +38,7 @@ public class UpdateChecker {
     private static final String REPO = "bkys/TVBoxOS";
     private static final String LATEST_API = "https://api.github.com/repos/" + REPO + "/releases/latest";
     private static final String RELEASES_PAGE = "https://github.com/" + REPO + "/releases";
+    private static final String LATEST_PAGE = "https://github.com/" + REPO + "/releases/latest";
     private static final long REMIND_INTERVAL = 7L * 24 * 60 * 60 * 1000;
 
     private static boolean checked = false;
@@ -67,6 +68,33 @@ public class UpdateChecker {
             }
         }
         checked = true;
+        // 先用发布页跳转取版本号（无频率限制），失败再走 GitHub API（能拿到更新说明）
+        OkGo.<String>get(LATEST_PAGE)
+                .headers("Accept", "text/html")
+                .execute(new StringCallback() {
+                    @Override
+                    public void onSuccess(Response<String> response) {
+                        String tag = tagFromUrl(response.getRawResponse().request().url().toString());
+                        if (tag == null) {
+                            checkByApi(activity, manual);
+                            return;
+                        }
+                        handleUpdate(activity, tag, "", apkUrlOfTag(tag), manual);
+                    }
+
+                    @Override
+                    public void onError(Response<String> response) {
+                        LOG.e("update redirect check error: "
+                                + (response == null ? "null" : response.code()));
+                        checkByApi(activity, manual);
+                    }
+                });
+    }
+
+    /**
+     * 备用方案：GitHub API（匿名每小时 60 次，同一出口 IP 共享，可能被限流）。
+     */
+    private static void checkByApi(final Activity activity, final boolean manual) {
         OkGo.<String>get(LATEST_API)
                 .headers("Accept", "application/vnd.github+json")
                 .execute(new StringCallback() {
@@ -76,40 +104,90 @@ public class UpdateChecker {
                             JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
                             if (!root.has("tag_name")) {
                                 if (manual) {
-                                    toast(activity, "未获取到版本信息");
+                                    toast(activity, "未获取到版本信息，请稍后重试");
                                 }
                                 return;
                             }
                             String tag = root.get("tag_name").getAsString();
-                            if (!manual && isSkipped(tag)) {
-                                return;
-                            }
-                            if (!isNewer(activity, tag)) {
-                                if (manual) {
-                                    toast(activity, "当前已是最新版本 " + tag);
-                                }
-                                return;
-                            }
                             String notes = root.has("body") && !root.get("body").isJsonNull()
                                     ? root.get("body").getAsString() : "";
-                            String apkUrl = pickAsset(root);
-                            showUpdateDialog(activity, tag, notes, apkUrl);
+                            handleUpdate(activity, tag, notes, pickAsset(root), manual);
                         } catch (Exception e) {
                             LOG.e("update check parse error: " + e.getMessage());
                             if (manual) {
-                                toast(activity, "检查更新失败");
+                                toast(activity, "未获取到版本信息，请稍后重试");
                             }
                         }
                     }
 
                     @Override
                     public void onError(Response<String> response) {
-                        LOG.e("update check request error");
+                        LOG.e("update check request error: "
+                                + (response == null ? "null" : response.code()));
                         if (manual) {
                             toast(activity, "检查更新失败，请检查网络");
                         }
                     }
                 });
+    }
+
+    private static void handleUpdate(final Activity activity, String tag, String notes,
+                                     String apkUrl, boolean manual) {
+        if (!manual && isSkipped(tag)) {
+            return;
+        }
+        if (!isNewer(activity, tag)) {
+            if (manual) {
+                toast(activity, "当前已是最新版本 " + tag);
+            }
+            return;
+        }
+        showUpdateDialog(activity, tag, notes, apkUrl);
+    }
+
+    /**
+     * 从 https://github.com/bkys/TVBoxOS/releases/tag/v1.0.4 中取出 v1.0.4
+     */
+    private static String tagFromUrl(String url) {
+        if (url == null) {
+            return null;
+        }
+        int index = url.indexOf("/releases/tag/");
+        if (index < 0) {
+            return null;
+        }
+        String tag = url.substring(index + "/releases/tag/".length());
+        int cut = tag.indexOf('?');
+        if (cut >= 0) {
+            tag = tag.substring(0, cut);
+        }
+        cut = tag.indexOf('#');
+        if (cut >= 0) {
+            tag = tag.substring(0, cut);
+        }
+        tag = tag.trim();
+        return tag.isEmpty() ? null : tag;
+    }
+
+    /**
+     * 按固定命名规则（与 CI 产物一致）拼出安装包地址，通用包始终存在。
+     */
+    private static String apkUrlOfTag(String tag) {
+        String flavor = isPythonFlavor() ? "python" : "java";
+        return "https://github.com/" + REPO + "/releases/download/" + tag + "/"
+                + "NingJiaTV_release-" + flavor + ".apk";
+    }
+
+    /**
+     * python flavor 才会打包 Chaquopy 运行时，据此判断该下哪个安装包。
+     */
+    private static boolean isPythonFlavor() {
+        try {
+            Class.forName("com.chaquo.python.Python");
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private static void toast(Activity activity, String message) {
