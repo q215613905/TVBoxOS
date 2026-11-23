@@ -137,7 +137,7 @@ android {
         variant.outputs.configureEach { output ->
             def flavorNames = variant.productFlavors.collect { it.name }.join('-')
             // 构建自定义文件名
-            def fileName = "宁家影视_${variant.buildType.name}-${flavorNames}.apk"
+            def fileName = "NingJiaTV_${variant.buildType.name}-${flavorNames}.apk"
             outputFileName = fileName
         }
     }
