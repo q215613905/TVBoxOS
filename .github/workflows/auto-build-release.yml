@@ -68,7 +68,6 @@ jobs:
             echo "config json updated"
           else
             echo "config json download failed, keep existing"
-            rm -f json/bkystvbox.json
           fi
 
       - name: Bump version
