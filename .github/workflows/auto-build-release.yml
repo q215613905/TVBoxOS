@@ -5,6 +5,18 @@ on:
     # 每天 UTC 02:00（北京时间 10:00）查询一次上游
     - cron: '0 2 * * *'
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - 'pyramid/**'
+      - 'player/**'
+      - 'json/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradle.properties'
+      - '.github/workflows/auto-build-release.yml'
 
 permissions:
   contents: write
@@ -22,6 +34,8 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # 避免机器人自身提交（版本号/配置同步）导致无限循环构建
+    if: github.actor != 'github-actions[bot]'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,8 +54,8 @@ jobs:
           if [ -n "$upstream_sha" ] && [ "$upstream_sha" != "$recorded" ]; then
             changed=true
           fi
-          # 手动触发时强制构建并发布
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          # 手动触发或代码推送时强制构建并发布
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "push" ]; then
             changed=true
           fi
           echo "changed=$changed" >> "$GITHUB_OUTPUT"

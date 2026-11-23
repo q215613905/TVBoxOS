@@ -2,6 +2,7 @@ package com.github.tvbox.osc.util;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.ProgressDialog;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
@@ -23,9 +24,11 @@ import com.orhanobut.hawk.Hawk;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.Locale;
 
 /**
  * 软件自动更新检查：启动时查询 GitHub Release，有新版本则弹窗提示。
@@ -189,49 +192,192 @@ public class UpdateChecker {
     }
 
     private static void downloadAndInstall(final Activity activity, final String url) {
-        final File dir = new File(activity.getExternalCacheDir(), "apk");
-        if (!dir.exists()) {
-            dir.mkdirs();
+        final File dir = activity.getExternalCacheDir() != null
+                ? new File(activity.getExternalCacheDir(), "apk")
+                : new File(activity.getCacheDir(), "apk");
+        if (!dir.exists() && !dir.mkdirs()) {
+            Toast.makeText(activity, "无法创建下载目录", Toast.LENGTH_LONG).show();
+            return;
         }
         final File apk = new File(dir, "update.apk");
+        if (apk.exists() && !apk.delete()) {
+            LOG.e("update apk delete failed");
+        }
         Toast.makeText(activity, "开始下载更新...", Toast.LENGTH_SHORT).show();
+
+        final ProgressDialog dialog = new ProgressDialog(activity);
+        dialog.setTitle("下载更新");
+        dialog.setMessage("正在连接...");
+        dialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
+        dialog.setMax(100);
+        dialog.setProgress(0);
+        dialog.setCancelable(false);
+        dialog.show();
+
         new Thread(() -> {
+            HttpURLConnection conn = null;
+            FileOutputStream out = null;
             try {
-                HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-                conn.setConnectTimeout(15000);
-                conn.setReadTimeout(60000);
-                conn.setInstanceFollowRedirects(true);
+                conn = openConnection(url);
+                int code = conn.getResponseCode();
+                if (code < 200 || code >= 300) {
+                    throw new IOException("HTTP " + code);
+                }
+                long total = parseLong(conn.getHeaderField("Content-Length"));
                 InputStream in = conn.getInputStream();
-                FileOutputStream out = new FileOutputStream(apk);
-                byte[] buffer = new byte[8192];
+                out = new FileOutputStream(apk);
+                byte[] buffer = new byte[16384];
+                long downloaded = 0;
+                long lastBytes = 0;
+                long lastTime = System.currentTimeMillis();
                 int len;
                 while ((len = in.read(buffer)) > 0) {
                     out.write(buffer, 0, len);
+                    downloaded += len;
+                    long now = System.currentTimeMillis();
+                    if (now - lastTime >= 400) {
+                        long speed = (downloaded - lastBytes) * 1000L / Math.max(1L, now - lastTime);
+                        final int percent = total > 0 ? (int) (downloaded * 100 / total) : 0;
+                        final long cur = downloaded;
+                        final long sp = speed;
+                        final long tot = total;
+                        runOnUiThread(() -> {
+                            dialog.setProgress(percent);
+                            dialog.setMessage(sizeText(cur) + (tot > 0 ? " / " + sizeText(tot) : "")
+                                    + "\n" + sizeText(sp) + "/s");
+                        });
+                        lastBytes = downloaded;
+                        lastTime = now;
+                    }
                 }
+                out.flush();
                 out.close();
+                out = null;
                 in.close();
-                runOnUiThread(() -> install(activity, apk));
-            } catch (Exception e) {
+                if (downloaded <= 0) {
+                    throw new IOException("下载内容为空");
+                }
+                if (total > 0 && downloaded < total) {
+                    throw new IOException("下载不完整 " + downloaded + "/" + total);
+                }
                 runOnUiThread(() -> {
-                    Toast.makeText(activity, "下载失败，请前往发布页手动下载", Toast.LENGTH_LONG).show();
-                    openReleasesPage(activity);
+                    dismissQuietly(dialog);
+                    Toast.makeText(activity, "下载完成，正在安装...", Toast.LENGTH_SHORT).show();
+                    install(activity, apk);
                 });
+            } catch (Exception e) {
+                final String detail = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                LOG.e("update download error: " + detail);
+                runOnUiThread(() -> {
+                    dismissQuietly(dialog);
+                    showDownloadFailedDialog(activity, detail);
+                });
+            } finally {
+                if (out != null) {
+                    try {
+                        out.close();
+                    } catch (Exception ignored) {
+                    }
+                }
+                if (conn != null) {
+                    conn.disconnect();
+                }
             }
         }).start();
+    }
+
+    /**
+     * 跟随重定向打开连接（可跨 http/https 与域名），并带 UA 避免被 CDN 拒绝。
+     */
+    private static HttpURLConnection openConnection(String url) throws IOException {
+        String current = url;
+        for (int i = 0; i < 6; i++) {
+            HttpURLConnection conn = (HttpURLConnection) new URL(current).openConnection();
+            conn.setConnectTimeout(20000);
+            conn.setReadTimeout(30000);
+            conn.setInstanceFollowRedirects(false);
+            conn.setRequestProperty("User-Agent",
+                    "Mozilla/5.0 (Linux; Android " + Build.VERSION.RELEASE + ") NingJiaTV");
+            conn.setRequestProperty("Accept", "*/*");
+            int code = conn.getResponseCode();
+            if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
+                String location = conn.getHeaderField("Location");
+                conn.disconnect();
+                if (location == null) {
+                    throw new IOException("重定向缺少地址");
+                }
+                current = location.startsWith("http") ? location
+                        : new URL(new URL(current), location).toString();
+                continue;
+            }
+            return conn;
+        }
+        throw new IOException("重定向次数过多");
+    }
+
+    private static long parseLong(String value) {
+        try {
+            return value == null ? 0L : Long.parseLong(value.trim());
+        } catch (Exception e) {
+            return 0L;
+        }
+    }
+
+    private static String sizeText(long bytes) {
+        if (bytes >= 1024L * 1024 * 1024) {
+            return String.format(Locale.getDefault(), "%.2fGB", bytes / 1073741824.0);
+        }
+        if (bytes >= 1024L * 1024) {
+            return String.format(Locale.getDefault(), "%.1fMB", bytes / 1048576.0);
+        }
+        if (bytes >= 1024L) {
+            return String.format(Locale.getDefault(), "%.0fKB", bytes / 1024.0);
+        }
+        return bytes + "B";
+    }
+
+    private static void dismissQuietly(ProgressDialog dialog) {
+        try {
+            if (dialog.isShowing()) {
+                dialog.dismiss();
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static void showDownloadFailedDialog(Activity activity, String detail) {
+        if (activity == null || activity.isFinishing()) {
+            return;
+        }
+        new AlertDialog.Builder(activity)
+                .setTitle("下载失败")
+                .setMessage("更新包下载失败：" + detail + "\n\n可前往发布页用浏览器手动下载安装。")
+                .setPositiveButton("浏览器下载", (dialog, which) -> openReleasesPage(activity))
+                .setNegativeButton("取消", null)
+                .show();
     }
 
     private static void install(Activity activity, File apk) {
         try {
             if (!apk.exists() || apk.length() == 0) {
-                openReleasesPage(activity);
+                showDownloadFailedDialog(activity, "安装包不存在");
                 return;
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                     && !activity.getPackageManager().canRequestPackageInstalls()) {
-                Toast.makeText(activity, "请允许安装未知来源应用后重试", Toast.LENGTH_LONG).show();
-                Intent settings = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                        Uri.parse("package:" + activity.getPackageName()));
-                activity.startActivity(settings);
+                new AlertDialog.Builder(activity)
+                        .setTitle("需要安装权限")
+                        .setMessage("请在系统设置中允许本应用安装未知来源应用，然后重新点击更新。")
+                        .setPositiveButton("去设置", (dialog, which) -> {
+                            try {
+                                Intent settings = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                        Uri.parse("package:" + activity.getPackageName()));
+                                activity.startActivity(settings);
+                            } catch (Exception ignored) {
+                            }
+                        })
+                        .setNegativeButton("取消", null)
+                        .show();
                 return;
             }
             Intent intent = new Intent(Intent.ACTION_VIEW);
@@ -241,6 +387,9 @@ public class UpdateChecker {
             intent.setDataAndType(uri, "application/vnd.android.package-archive");
             activity.startActivity(intent);
         } catch (Exception e) {
+            LOG.e("update install error: " + e.getMessage());
+            Toast.makeText(activity, "安装失败：" + e.getMessage() + "，请前往发布页手动下载",
+                    Toast.LENGTH_LONG).show();
             openReleasesPage(activity);
         }
     }

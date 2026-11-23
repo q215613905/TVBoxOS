@@ -12,7 +12,7 @@
         android:layout_height="wrap_content"
         android:lineSpacingExtra="@dimen/ts_50"
         android:lineSpacingMultiplier="0"
-        android:text="本软件只提供聚合展示功能，所有资源来自网上, 软件不参与任何制作, 上传, 储存, 下载等内容. 软件仅供学习参考, 请于安装后24小时内删除。\n\n打包分发请保留出处\nhttps://github.com/CatVodTVOfficial/TVBoxOSC\nhttps://github.com/q215613905/TVBoxOS"
+        android:text="本程序为个人研究自己测试使用，勿传播或用于商业用途。\n\n源码地址\nhttps://github.com/bkys/TVBoxOS"
         android:textColor="@color/dialog_text_primary"
         android:textSize="@dimen/ts_24" />
 
