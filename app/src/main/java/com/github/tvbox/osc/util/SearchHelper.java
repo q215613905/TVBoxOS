@@ -1,14 +1,18 @@
 package com.github.tvbox.osc.util;
 
 import com.github.tvbox.osc.api.ApiConfig;
+import com.github.tvbox.osc.bean.Movie;
 import com.github.tvbox.osc.bean.SourceBean;
 import com.github.tvbox.osc.ui.activity.SearchActivity;
 import com.orhanobut.hawk.Hawk;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -83,6 +87,30 @@ public class SearchHelper {
             mCheckSources.put(bean.getKey(), "1");
         }
         return mCheckSources;
+    }
+
+    public static List<Movie.Video> sortSearchResults(List<Movie.Video> videos, String searchTitle) {
+        List<Movie.Video> results = new ArrayList<>(videos);
+        final String keyword = normalizeSearchText(searchTitle);
+        if (keyword.isEmpty() || results.size() < 2) return results;
+        final HashMap<Movie.Video, Integer> scores = new HashMap<>();
+        for (Movie.Video video : results) {
+            String name = normalizeSearchText(video == null ? null : video.name);
+            int score = name.equals(keyword) ? 3 : name.startsWith(keyword) ? 2 : name.contains(keyword) ? 1 : 0;
+            scores.put(video, score);
+        }
+        // 稳定排序仅调整当前站点内的顺序，所有结果均保留。
+        Collections.sort(results, new Comparator<Movie.Video>() {
+            @Override
+            public int compare(Movie.Video left, Movie.Video right) {
+                return scores.get(right) - scores.get(left);
+            }
+        });
+        return results;
+    }
+
+    private static String normalizeSearchText(String text) {
+        return text == null ? "" : text.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
     }
 
     public static List<String> splitWords(String text) {

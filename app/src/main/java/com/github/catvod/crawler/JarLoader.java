@@ -76,6 +76,7 @@ public class JarLoader {
         locks.clear();
         siteJarKeys.clear();
         aliases.clear();
+        protectedInitJar.clear();
         recent = MAIN_KEY;
     }
 
@@ -208,25 +209,29 @@ public class JarLoader {
 
         Spider cached = spiders.get(spKey);
         if (cached != null) {
-            Log.i(TAG, "getSpider cached key=" + spKey);
+            Log.i(TAG, "echo-getSpider cached key=" + spKey);
             return cached;
         }
 
-        try {
-            if (!MAIN_KEY.equals(jaKey)) parseJar(jaKey, jar);
-            DexClassLoader loader = loaders.get(jaKey);
-            if (loader == null) return new SpiderNull();
-            Spider spider = (Spider) loader.loadClass("com.github.catvod.spider." + className(api)).newInstance();
-            spider.siteKey = key;
-            spider.initApi(new SpiderApi());
-            spider.init(App.getInstance(), ext);
-            spiders.put(spKey, spider);
-            Log.i(TAG, "getSpider success key=" + spKey);
-            return spider;
-        } catch (Throwable e) {
-            Log.i(TAG, "getSpider error key=" + spKey + ", msg=" + e.getMessage());
-            e.printStackTrace();
-            return new SpiderNull();
+        synchronized (lock("spider:" + spKey)) {
+            cached = spiders.get(spKey);
+            if (cached != null) return cached;
+            try {
+                if (!MAIN_KEY.equals(jaKey)) parseJar(jaKey, jar);
+                DexClassLoader loader = loaders.get(jaKey);
+                if (loader == null) return new SpiderNull();
+                Spider spider = (Spider) loader.loadClass("com.github.catvod.spider." + className(api)).newInstance();
+                spider.siteKey = key;
+                spider.initApi(new SpiderApi());
+                spider.init(App.getInstance(), ext);
+                spiders.put(spKey, spider);
+                Log.i(TAG, "echo-getSpider success key=" + spKey);
+                return spider;
+            } catch (Throwable e) {
+                Log.i(TAG, "echo-getSpider error key=" + spKey + ", msg=" + e.getMessage());
+                e.printStackTrace();
+                return new SpiderNull();
+            }
         }
     }
 

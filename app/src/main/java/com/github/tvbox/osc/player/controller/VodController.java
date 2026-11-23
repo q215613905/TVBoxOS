@@ -941,6 +941,7 @@ public class VodController extends BaseController {
         //屏显
         int disPlay = Hawk.get(HawkConfig.SCREEN_DISPLAY, GONE);
         mTopRoot2.setVisibility(disPlay);
+        tv_screen_display.setVisibility(disPlay);
         seekTime.setVisibility(disPlay);
         net_play_speed.setVisibility(disPlay);
         mPlayPauseTime.setVisibility(disPlay);
@@ -949,6 +950,7 @@ public class VodController extends BaseController {
             @Override
             public void onClick(View view) {
                 int disPlay =(Hawk.get(HawkConfig.SCREEN_DISPLAY, GONE) == VISIBLE) ? GONE : VISIBLE;
+                tv_screen_display.setVisibility(disPlay);
                 seekTime.setVisibility(disPlay);
                 net_play_speed.setVisibility(disPlay);
                 if(disPlay==VISIBLE)mPlayPauseTime.setVisibility(disPlay);
@@ -1018,7 +1020,7 @@ public class VodController extends BaseController {
         try {
             float speed = (float) mPlayerConfig.getDouble("sp");
             ArrayList<Float> speeds = new ArrayList<>();
-            float[] speedOptions = {0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 3.0f};
+            float[] speedOptions = {0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.25f, 2.5f, 3.0f};
             for (float value : speedOptions) speeds.add(value);
             int defaultPos = speeds.indexOf(speed);
             SelectDialog<Float> dialog = new SelectDialog<>(mActivity);

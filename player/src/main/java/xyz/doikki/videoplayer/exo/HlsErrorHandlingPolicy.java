@@ -1,19 +1,19 @@
 package xyz.doikki.videoplayer.exo;
 
+import android.util.Log;
+
 import androidx.annotation.NonNull;
 
 import com.google.android.exoplayer2.C;
+import com.google.android.exoplayer2.ParserException;
 import com.google.android.exoplayer2.upstream.DefaultLoadErrorHandlingPolicy;
 import com.google.android.exoplayer2.upstream.LoadErrorHandlingPolicy;
 
-import java.io.IOException;
-
 /**
- * 自定义HLS错误处理策略，跳过坏的切片继续播放
+ * HLS切片快速重试，兼容TS同步异常，并保留默认的错误暴露阈值和备用轨道回退。
  */
 public class HlsErrorHandlingPolicy extends DefaultLoadErrorHandlingPolicy {
 
-    private static final int MAX_RETRIES = 3;  // 最多重试3次
     private static final long RETRY_DELAY_MS = 500;  // 重试延迟500毫秒
 
     public HlsErrorHandlingPolicy() {
@@ -22,42 +22,18 @@ public class HlsErrorHandlingPolicy extends DefaultLoadErrorHandlingPolicy {
 
     @Override
     public long getRetryDelayMsFor(@NonNull LoadErrorHandlingPolicy.LoadErrorInfo loadErrorInfo) {
-        // 如果是HLS切片错误，使用较短的重试延迟
-        if (isChunkError(loadErrorInfo)) {
+        boolean isMediaChunk = loadErrorInfo.mediaLoadData.dataType == C.DATA_TYPE_MEDIA;
+        String message = loadErrorInfo.exception.getMessage();
+        if (isMediaChunk && loadErrorInfo.exception instanceof ParserException
+                && message != null && message.startsWith("Cannot find sync byte.")) {
+            // TS解析器已丢弃不同步数据，HlsMediaChunk会记录读取位置，允许重试后继续读取。
+            Log.w("Tvbox-runtime", "echo-hls-ts-resync-retry count=" + loadErrorInfo.errorCount
+                    + ", bytesLoaded=" + loadErrorInfo.loadEventInfo.bytesLoaded
+                    + ", segment=" + loadErrorInfo.loadEventInfo.uri);
             return RETRY_DELAY_MS;
         }
-        return super.getRetryDelayMsFor(loadErrorInfo);
-    }
-
-    @Override
-    public int getMinimumLoadableRetryCount(int dataType) {
-        // 对于HLS切片，限制重试次数，避免无限重试
-        if (dataType == C.DATA_TYPE_MEDIA) {
-            return MAX_RETRIES;
-        }
-        return super.getMinimumLoadableRetryCount(dataType);
-    }
-
-    @Override
-    public LoadErrorHandlingPolicy.FallbackSelection getFallbackSelectionFor(
-            @NonNull FallbackOptions fallbackOptions,
-            @NonNull LoadErrorInfo loadErrorInfo) {
-
-        // 对于HLS切片加载错误，不使用fallback，而是直接跳过
-        if (isChunkError(loadErrorInfo)) {
-            // 返回null表示不使用fallback，ExoPlayer会跳过这个切片继续播放
-            return null;
-        }
-
-        return super.getFallbackSelectionFor(fallbackOptions, loadErrorInfo);
-    }
-
-    /**
-     * 判断是否是切片错误
-     */
-    private boolean isChunkError(@NonNull LoadErrorInfo loadErrorInfo) {
-        // 检查是否是IO异常（网络错误、404等）
-        Throwable error = loadErrorInfo.exception;
-        return error instanceof IOException;
+        long retryDelayMs = super.getRetryDelayMsFor(loadErrorInfo);
+        // 保留默认不可重试异常分类，重试次数由默认错误暴露阈值控制。
+        return isMediaChunk && retryDelayMs != C.TIME_UNSET ? RETRY_DELAY_MS : retryDelayMs;
     }
 }

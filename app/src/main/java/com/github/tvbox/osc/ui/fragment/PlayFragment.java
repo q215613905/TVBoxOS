@@ -1623,25 +1623,16 @@ public class PlayFragment extends BaseLazyFragment {
         if (episodes == null || episodes.isEmpty()) return;
         final int episodeCount = episodes.size();
         final int currentPosition = Math.max(0, Math.min(mVodInfo.playIndex, episodeCount - 1));
-        final int groupStart;
-        final List<VodInfo.VodSeries> dialogEpisodes;
-        final int selectedPosition;
-        if (episodeCount > 200) {
-            int groupCount = episodeCount <= 400 ? 60 : 120;
-            groupStart = (currentPosition / groupCount) * groupCount;
-            int groupEnd = Math.min(groupStart + groupCount, episodeCount);
-            dialogEpisodes = new ArrayList<>(episodes.subList(groupStart, groupEnd));
-            selectedPosition = currentPosition - groupStart;
-        } else {
-            groupStart = 0;
-            dialogEpisodes = episodes;
-            selectedPosition = currentPosition;
-        }
+        // 当前集及前后各最多 60 集，不受集数分组限制。
+        final int startPosition = Math.max(0, currentPosition - 60);
+        final int endPosition = Math.min(episodeCount, currentPosition + 61);
+        final List<VodInfo.VodSeries> dialogEpisodes = new ArrayList<>(episodes.subList(startPosition, endPosition));
+        final int selectedPosition = currentPosition - startPosition;
         String title = TextUtils.isEmpty(mVodInfo.name) ? "选集" : mVodInfo.name + " 选集";
         EpisodeDialog dialog = new EpisodeDialog(requireContext(), title, dialogEpisodes, selectedPosition, new EpisodeDialog.EpisodeSelectListener() {
             @Override
             public void selectEpisode(int position) {
-                int actualPosition = groupStart + position;
+                int actualPosition = startPosition + position;
                 if (position < 0 || position >= dialogEpisodes.size()
                         || actualPosition >= episodes.size() || actualPosition == mVodInfo.playIndex) return;
                 triedLineFlags.clear();

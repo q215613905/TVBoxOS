@@ -42,7 +42,14 @@ public class GridAdapter extends BaseQuickAdapter<Movie.Video, BaseViewHolder> {
                 if (ImgUtil.isBase64Image(pic)) {
                     ivThumb.setImageBitmap(ImgUtil.decodeBase64ToBitmap(pic));
                 } else {
-                    ImgUtil.load(pic, ivThumb, AutoSizeUtils.mm2px(mContext, 10), AutoSizeUtils.mm2px(mContext, 240), AutoSizeUtils.mm2px(mContext, 336), item.name);
+                    int roundingRadius = AutoSizeUtils.mm2px(mContext, 10);
+                    int imageWidth = AutoSizeUtils.mm2px(mContext, 240);
+                    int imageHeight = AutoSizeUtils.mm2px(mContext, 336);
+                    if (style != null) {
+                        ImgUtil.load(pic, ivThumb, roundingRadius, imageWidth, imageHeight, item.name, ImageView.ScaleType.FIT_XY);
+                    } else {
+                        ImgUtil.load(pic, ivThumb, roundingRadius, imageWidth, imageHeight, item.name);
+                    }
                 }
             } else {
                 ivThumb.setImageDrawable(ImgUtil.createTextDrawable(item.name));
@@ -81,7 +88,14 @@ public class GridAdapter extends BaseQuickAdapter<Movie.Video, BaseViewHolder> {
             if (ImgUtil.isBase64Image(pic)) {
                 ivThumb.setImageBitmap(ImgUtil.decodeBase64ToBitmap(pic));
             } else {
-                ImgUtil.load(pic, ivThumb, AutoSizeUtils.mm2px(mContext, 10), AutoSizeUtils.mm2px(mContext, newWidth), AutoSizeUtils.mm2px(mContext, newHeight), item.name);
+                int roundingRadius = AutoSizeUtils.mm2px(mContext, 10);
+                int imageWidth = AutoSizeUtils.mm2px(mContext, newWidth);
+                int imageHeight = AutoSizeUtils.mm2px(mContext, newHeight);
+                if (style != null) {
+                    ImgUtil.load(pic, ivThumb, roundingRadius, imageWidth, imageHeight, item.name, ImageView.ScaleType.FIT_XY);
+                } else {
+                    ImgUtil.load(pic, ivThumb, roundingRadius, imageWidth, imageHeight, item.name);
+                }
             }
         } else {
             ivThumb.setImageDrawable(ImgUtil.createTextDrawable(item.name));
