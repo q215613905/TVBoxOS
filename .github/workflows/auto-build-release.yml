@@ -149,7 +149,8 @@ jobs:
           export BUILD_PYTHON="$pythonLocation/bin/python"
           ls -l "$BUILD_PYTHON"
           chmod +x gradlew
-          ./gradlew assembleRelease --stacktrace
+          # 只构建 java 系列（Chaquopy 的 python 系列依赖 buildPython 3.8 与 chaquo 源站，CI 上不可用）
+          ./gradlew assembleJavaRelease assembleJava32Release assembleJava64Release --stacktrace
 
       - name: Publish release
         if: steps.check.outputs.changed == 'true'
