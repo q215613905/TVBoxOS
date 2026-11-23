@@ -1,0 +1,151 @@
+name: Auto Update Build Release
+
+on:
+  schedule:
+    # 每天 UTC 02:00（北京时间 10:00）查询一次上游
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  UPSTREAM: https://github.com/q215613905/TVBoxOS.git
+  UPSTREAM_BRANCH: main
+  CONFIG_URL: http://bnz4.ibkys.cn:81/bkystvbox.json
+  UPSTREAM_SHA_FILE: .upstream-sha
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check upstream update
+        id: check
+        run: |
+          upstream_sha=$(git ls-remote "$UPSTREAM" "refs/heads/$UPSTREAM_BRANCH" | cut -f1)
+          recorded=$(cat "$UPSTREAM_SHA_FILE" 2>/dev/null || echo "")
+          echo "upstream=$upstream_sha"
+          echo "recorded=$recorded"
+          echo "sha=$upstream_sha" >> "$GITHUB_OUTPUT"
+          changed=false
+          if [ -n "$upstream_sha" ] && [ "$upstream_sha" != "$recorded" ]; then
+            changed=true
+          fi
+          # 手动触发时强制构建并发布
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            changed=true
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - name: Merge upstream changes
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add upstream "$UPSTREAM" || true
+          git fetch --no-tags upstream "$UPSTREAM_BRANCH"
+          # 合并上游更新，冲突处保留本工程已有的改动
+          git merge --allow-unrelated-histories -X ours --no-edit "upstream/$UPSTREAM_BRANCH" || true
+          git add -A
+
+      - name: Sync config json
+        run: |
+          mkdir -p json app/src/main/assets/json
+          if curl -fsSL --max-time 90 "$CONFIG_URL" -o json/bkystvbox.json; then
+            cp -f json/bkystvbox.json app/src/main/assets/json/bkystvbox.json
+            echo "config json updated"
+          else
+            echo "config json download failed, keep existing"
+            rm -f json/bkystvbox.json
+          fi
+
+      - name: Bump version
+        id: version
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          version=$(python3 - <<'PY'
+          import re
+          path = 'app/build.gradle'
+          with open(path, encoding='utf-8') as f:
+              content = f.read()
+          code_match = re.search(r'versionCode\s+(\d+)', content)
+          if code_match:
+              content = content.replace(code_match.group(0), 'versionCode %d' % (int(code_match.group(1)) + 1), 1)
+          name_match = re.search(r"versionName\s+'([^']+)'", content)
+          name = name_match.group(1)
+          parts = name.split('.')
+          while len(parts) < 3:
+              parts.append('0')
+          parts[-1] = str(int(parts[-1]) + 1)
+          new_name = '.'.join(parts)
+          content = content.replace(name_match.group(0), "versionName '%s'" % new_name, 1)
+          with open(path, 'w', encoding='utf-8') as f:
+              f.write(content)
+          print(new_name)
+          PY
+          )
+          echo "name=$version" >> "$GITHUB_OUTPUT"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ "${{ steps.check.outputs.changed }}" = "true" ]; then
+            echo "${{ steps.check.outputs.sha }}" > "$UPSTREAM_SHA_FILE"
+          fi
+          git add -A
+          if git diff --cached --quiet; then
+            echo "no changes to commit"
+          else
+            if [ -n "${{ steps.version.outputs.name }}" ]; then
+              git commit -m "chore: sync upstream and bump to ${{ steps.version.outputs.name }}"
+            else
+              git commit -m "chore: sync config json"
+            fi
+            git push origin HEAD:${{ github.ref_name }}
+          fi
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-33" "build-tools;33.0.1" > /dev/null
+
+      - name: Setup Python for Chaquopy
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Build release
+        if: steps.check.outputs.changed == 'true'
+        env:
+          BUILD_PYTHON: ${{ env.pythonLocation }}/bin/python
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --stacktrace
+
+      - name: Publish release
+        if: steps.check.outputs.changed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.name }}
+          name: v${{ steps.version.outputs.name }}
+          body: |
+            自动同步上游更新并构建发布。
+            上游提交：${{ steps.check.outputs.sha }}
+          files: app/build/outputs/apk/*/release/*.apk
+          fail_on_unmatched_files: false

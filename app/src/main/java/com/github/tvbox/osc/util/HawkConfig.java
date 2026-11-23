@@ -66,5 +66,7 @@ public class HawkConfig {
     public static final String DANMU_SIZE_SCALE = "danmu_size_scale";
     public static final String DANMU_RANDOM_COLOR = "danmu_random_color";
     public static final String DANMU_API = "danmu_api";
+    public static final String UPDATE_REMIND_TIME = "update_remind_time"; // 下次提醒检查更新时间戳
+    public static final String UPDATE_SKIP_VERSION = "update_skip_version"; // 跳过的版本
     public static boolean hotVodDelete;
 }
