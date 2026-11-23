@@ -6,8 +6,8 @@ android {
     defaultConfig {
         applicationId 'com.github.tvbox.osc.jun'
         targetSdkVersion 28
-        versionCode 1
-        versionName '1.0.0'
+        versionCode 2
+        versionName '1.0.1'
         multiDexEnabled true
         //设置room的Schema的位置
         javaCompileOptions {
@@ -96,12 +96,33 @@ android {
         }
     }
 
+    signingConfigs {
+        if (project.hasProperty("RELEASE_STORE_FILE")) {
+            myConfig {
+                storeFile file(RELEASE_STORE_FILE)
+                storePassword RELEASE_STORE_PASSWORD
+                keyAlias RELEASE_KEY_ALIAS
+                keyPassword RELEASE_KEY_PASSWORD
+                v1SigningEnabled true
+                v2SigningEnabled true
+                enableV3Signing = true
+                enableV4Signing = true
+            }
+        }
+    }
+
     buildTypes {
         debug {
             minifyEnabled false
+            if (project.hasProperty("RELEASE_STORE_FILE")) {
+                signingConfig signingConfigs.myConfig
+            }
         }
         release {
             minifyEnabled true
+            if (project.hasProperty("RELEASE_STORE_FILE")) {
+                signingConfig signingConfigs.myConfig
+            }
         }
     }
 
@@ -116,7 +137,7 @@ android {
         variant.outputs.configureEach { output ->
             def flavorNames = variant.productFlavors.collect { it.name }.join('-')
             // 构建自定义文件名
-            def fileName = "TVBox_${variant.buildType.name}-${flavorNames}.apk"
+            def fileName = "NingJiaTV_${variant.buildType.name}-${flavorNames}.apk"
             outputFileName = fileName
         }
     }
