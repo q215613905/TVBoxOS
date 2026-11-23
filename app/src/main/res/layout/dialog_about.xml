@@ -16,4 +16,23 @@
         android:textColor="@color/dialog_text_primary"
         android:textSize="@dimen/ts_24" />
 
+    <TextView
+        android:id="@+id/tvVersion"
+        android:layout_width="@dimen/vs_600"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/vs_30"
+        android:text="当前版本"
+        android:textColor="@color/dialog_text_primary"
+        android:textSize="@dimen/ts_22" />
+
+    <Button
+        android:id="@+id/btnCheckUpdate"
+        android:layout_width="@dimen/vs_600"
+        android:layout_height="@dimen/vs_80"
+        android:layout_marginTop="@dimen/vs_30"
+        android:background="@drawable/shape_danmu_setting_bg"
+        android:text="检查更新"
+        android:textColor="@color/dialog_text_primary"
+        android:textSize="@dimen/ts_24" />
+
 </LinearLayout>

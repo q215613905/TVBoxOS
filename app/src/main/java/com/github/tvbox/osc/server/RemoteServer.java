@@ -138,6 +138,37 @@ public class RemoteServer extends NanoHTTPD {
         }
     }
 
+    /**
+     * 打开 APK 内置 assets 文件，不存在时返回 null。
+     */
+    private InputStream openAsset(String path) {
+        try {
+            return App.getInstance().getAssets().open(path.replaceFirst("^/+", ""));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String assetMime(String path) {
+        String lower = path.toLowerCase();
+        if (lower.endsWith(".json")) {
+            return "application/json";
+        }
+        if (lower.endsWith(".js")) {
+            return "application/javascript";
+        }
+        if (lower.endsWith(".css")) {
+            return "text/css";
+        }
+        if (lower.endsWith(".html") || lower.endsWith(".htm")) {
+            return "text/html";
+        }
+        if (lower.endsWith(".txt")) {
+            return "text/plain";
+        }
+        return "application/octet-stream";
+    }
+
     @Override
     public Response serve(IHTTPSession session) {
         EventBus.getDefault().post(new ServerEvent(ServerEvent.SERVER_CONNECTION));
@@ -168,6 +199,11 @@ public class RemoteServer extends NanoHTTPD {
                                 return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.OK, NanoHTTPD.MIME_PLAINTEXT, fileList(root, f));
                             }
                         } else {
+                            // 外部存储没有该文件时回退到 APK 内置 assets（内置 json/bkystvbox.json 走这里）
+                            InputStream asset = openAsset(f);
+                            if (asset != null) {
+                                return NanoHTTPD.newChunkedResponse(NanoHTTPD.Response.Status.OK, assetMime(f), asset);
+                            }
                             return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.INTERNAL_ERROR, NanoHTTPD.MIME_PLAINTEXT, "File " + file + " not found!");
                         }
                     } catch (Throwable th) {

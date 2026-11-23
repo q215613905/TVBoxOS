@@ -43,14 +43,30 @@ public class UpdateChecker {
     private static boolean checked = false;
 
     public static void check(final Activity activity) {
-        if (checked || activity == null || activity.isFinishing()) {
+        check(activity, false);
+    }
+
+    /**
+     * 手动检查更新（关于页面按钮）：忽略“7 天后再提醒”和“跳过此版本”，并给出结果提示。
+     */
+    public static void checkNow(final Activity activity) {
+        check(activity, true);
+    }
+
+    private static void check(final Activity activity, final boolean manual) {
+        if (activity == null || activity.isFinishing()) {
             return;
+        }
+        if (!manual) {
+            if (checked) {
+                return;
+            }
+            // 用户选择了“7 天后再提醒”
+            if (System.currentTimeMillis() < Hawk.get(HawkConfig.UPDATE_REMIND_TIME, 0L)) {
+                return;
+            }
         }
         checked = true;
-        // 用户选择了“7 天后再提醒”
-        if (System.currentTimeMillis() < Hawk.get(HawkConfig.UPDATE_REMIND_TIME, 0L)) {
-            return;
-        }
         OkGo.<String>get(LATEST_API)
                 .headers("Accept", "application/vnd.github+json")
                 .execute(new StringCallback() {
@@ -59,10 +75,19 @@ public class UpdateChecker {
                         try {
                             JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
                             if (!root.has("tag_name")) {
+                                if (manual) {
+                                    toast(activity, "未获取到版本信息");
+                                }
                                 return;
                             }
                             String tag = root.get("tag_name").getAsString();
-                            if (isSkipped(tag) || !isNewer(activity, tag)) {
+                            if (!manual && isSkipped(tag)) {
+                                return;
+                            }
+                            if (!isNewer(activity, tag)) {
+                                if (manual) {
+                                    toast(activity, "当前已是最新版本 " + tag);
+                                }
                                 return;
                             }
                             String notes = root.has("body") && !root.get("body").isJsonNull()
@@ -71,14 +96,29 @@ public class UpdateChecker {
                             showUpdateDialog(activity, tag, notes, apkUrl);
                         } catch (Exception e) {
                             LOG.e("update check parse error: " + e.getMessage());
+                            if (manual) {
+                                toast(activity, "检查更新失败");
+                            }
                         }
                     }
 
                     @Override
                     public void onError(Response<String> response) {
                         LOG.e("update check request error");
+                        if (manual) {
+                            toast(activity, "检查更新失败，请检查网络");
+                        }
                     }
                 });
+    }
+
+    private static void toast(Activity activity, String message) {
+        runOnUiThread(() -> {
+            try {
+                Toast.makeText(activity, message, Toast.LENGTH_SHORT).show();
+            } catch (Exception ignored) {
+            }
+        });
     }
 
     private static boolean isSkipped(String tag) {
