@@ -125,12 +125,16 @@ jobs:
           java-version: '17'
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android platform
         run: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-33" "build-tools;33.0.1" > /dev/null
+          # runner 已预装 Android SDK，直接使用其 cmdline-tools（不再依赖 setup-android 的 tools 包）
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER=$(command -v sdkmanager)
+          fi
+          echo "using $SDKMANAGER at $ANDROID_HOME"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "platforms;android-33" "build-tools;33.0.1" > /dev/null
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
 
       - name: Setup Python for Chaquopy
         uses: actions/setup-python@v5
