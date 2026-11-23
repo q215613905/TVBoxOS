@@ -77,23 +77,28 @@ jobs:
         run: |
           version=$(python3 - <<'PY'
           import re
+          import subprocess
           path = 'app/build.gradle'
           with open(path, encoding='utf-8') as f:
               content = f.read()
-          code_match = re.search(r'versionCode\s+(\d+)', content)
-          if code_match:
-              content = content.replace(code_match.group(0), 'versionCode %d' % (int(code_match.group(1)) + 1), 1)
           name_match = re.search(r"versionName\s+'([^']+)'", content)
           name = name_match.group(1)
-          parts = name.split('.')
-          while len(parts) < 3:
-              parts.append('0')
-          parts[-1] = str(int(parts[-1]) + 1)
-          new_name = '.'.join(parts)
-          content = content.replace(name_match.group(0), "versionName '%s'" % new_name, 1)
-          with open(path, 'w', encoding='utf-8') as f:
-              f.write(content)
-          print(new_name)
+          # 当前版本若已发布过，则小版本号 +1；未发布则沿用（避免失败重跑时空跳版本）
+          tag_out = subprocess.run(['git', 'ls-remote', '--tags', 'origin', 'refs/tags/v%s' % name],
+                                   capture_output=True, text=True).stdout.strip()
+          if tag_out:
+              code_match = re.search(r'versionCode\s+(\d+)', content)
+              if code_match:
+                  content = content.replace(code_match.group(0), 'versionCode %d' % (int(code_match.group(1)) + 1), 1)
+              parts = name.split('.')
+              while len(parts) < 3:
+                  parts.append('0')
+              parts[-1] = str(int(parts[-1]) + 1)
+              name = '.'.join(parts)
+              content = content.replace(name_match.group(0), "versionName '%s'" % name, 1)
+              with open(path, 'w', encoding='utf-8') as f:
+                  f.write(content)
+          print(name)
           PY
           )
           echo "name=$version" >> "$GITHUB_OUTPUT"
