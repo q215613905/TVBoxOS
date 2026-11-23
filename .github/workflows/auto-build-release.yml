@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: auto-build-release
+  cancel-in-progress: false
+
 env:
   UPSTREAM: https://github.com/q215613905/TVBoxOS.git
   UPSTREAM_BRANCH: main
@@ -50,7 +54,10 @@ jobs:
           git remote add upstream "$UPSTREAM" || true
           git fetch --no-tags upstream "$UPSTREAM_BRANCH"
           # 合并上游更新，冲突处保留本工程已有的改动
-          git merge --allow-unrelated-histories -X ours --no-edit "upstream/$UPSTREAM_BRANCH" || true
+          if ! git merge --allow-unrelated-histories -X ours --no-edit "upstream/$UPSTREAM_BRANCH"; then
+            echo "merge failed, abort and keep current code"
+            git merge --abort || true
+          fi
           git add -A
 
       - name: Sync config json
@@ -130,11 +137,14 @@ jobs:
         with:
           python-version: '3.10'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Build release
         if: steps.check.outputs.changed == 'true'
-        env:
-          BUILD_PYTHON: ${{ env.pythonLocation }}/bin/python
         run: |
+          export BUILD_PYTHON="$pythonLocation/bin/python"
+          ls -l "$BUILD_PYTHON"
           chmod +x gradlew
           ./gradlew assembleRelease --stacktrace
 
