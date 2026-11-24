@@ -118,7 +118,7 @@ public class ImgUtil {
             return;
         }
         RequestOptions options = new RequestOptions()
-                .format(DecodeFormat.PREFER_ARGB_8888)
+                .format(DecodeFormat.PREFER_RGB_565)
                 .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                 .dontAnimate()
                 .transform(new FitCenter(), new RoundedCorners(roundingRadius));

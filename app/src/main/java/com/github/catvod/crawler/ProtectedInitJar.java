@@ -3,7 +3,6 @@ package com.github.catvod.crawler;
 import android.content.Context;
 import android.text.TextUtils;
 import android.util.Base64;
-import android.util.Log;
 
 import com.github.tvbox.osc.base.App;
 
@@ -53,8 +52,6 @@ class ProtectedInitJar {
         }
         bindContext(clz, init);
         if (!bindDexLoader(clz, init)) return false;
-        // 部分 JAR 的首页依赖 saveConfig() 初始化的本地配置。
-        invokeNoArg(clz, "saveConfig");
         invokeNoArg(clz, "replaceCloudDiskNames");
         invokeStartGoProxy(clz);
         return true;
@@ -96,8 +93,6 @@ class ProtectedInitJar {
                 }
             }
             return bound;
-        } catch (ClassNotFoundException ignored) {
-            return true;
         } catch (Throwable ignored) {
         }
         return false;
@@ -105,12 +100,9 @@ class ProtectedInitJar {
 
     private void invokeNoArg(Class<?> clz, String methodName) {
         try {
-            Method method = clz.getDeclaredMethod(methodName);
-            method.setAccessible(true);
+            Method method = clz.getMethod(methodName);
             method.invoke(null);
-        } catch (NoSuchMethodException ignored) {
-        } catch (Throwable th) {
-            Log.e("JarLoader", "echo-init " + methodName + " failed", th);
+        } catch (Throwable ignored) {
         }
     }
 

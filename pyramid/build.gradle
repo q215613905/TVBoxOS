@@ -10,7 +10,7 @@ android {
         minSdkVersion 19
         targetSdkVersion 28
         python {
-            buildPython("D:/Programs/Python/Python38/python.exe")
+            buildPython(System.getenv("BUILD_PYTHON") ?: "/root/.pyenv/versions/3.10.22/bin/python3.10")
             pip {
                 install "lxml"
                 install "ujson"

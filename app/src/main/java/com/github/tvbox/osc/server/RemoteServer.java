@@ -67,8 +67,6 @@ public class RemoteServer extends NanoHTTPD {
     private boolean isStarted = false;
     private DataReceiver mDataReceiver;
     public static String m3u8Content;
-    private static volatile int transferProgress;
-    private static volatile String transferProgressName = "";
     private ArrayList<RequestProcess> getRequestList = new ArrayList<>();
     private ArrayList<RequestProcess> postRequestList = new ArrayList<>();
 
@@ -86,7 +84,6 @@ public class RemoteServer extends NanoHTTPD {
         getRequestList.add(new RawRequestProcess(this.mContext, "/ui.css", R.raw.ui, "text/css"));
         getRequestList.add(new RawRequestProcess(this.mContext, "/jquery.js", R.raw.jquery, "application/x-javascript"));
         getRequestList.add(new RawRequestProcess(this.mContext, "/script.js", R.raw.script, "application/x-javascript"));
-        getRequestList.add(new RawRequestProcess(this.mContext, "/transfer.html", R.raw.transfer, NanoHTTPD.MIME_HTML));
         getRequestList.add(new RawRequestProcess(this.mContext, "/favicon.ico", R.drawable.app_icon, "image/x-icon"));
         getRequestList.add(new CacheRequestProcess());
     }
@@ -141,6 +138,37 @@ public class RemoteServer extends NanoHTTPD {
         }
     }
 
+    /**
+     * 打开 APK 内置 assets 文件，不存在时返回 null。
+     */
+    private InputStream openAsset(String path) {
+        try {
+            return App.getInstance().getAssets().open(path.replaceFirst("^/+", ""));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String assetMime(String path) {
+        String lower = path.toLowerCase();
+        if (lower.endsWith(".json")) {
+            return "application/json";
+        }
+        if (lower.endsWith(".js")) {
+            return "application/javascript";
+        }
+        if (lower.endsWith(".css")) {
+            return "text/css";
+        }
+        if (lower.endsWith(".html") || lower.endsWith(".htm")) {
+            return "text/html";
+        }
+        if (lower.endsWith(".txt")) {
+            return "text/plain";
+        }
+        return "application/octet-stream";
+    }
+
     @Override
     public Response serve(IHTTPSession session) {
         EventBus.getDefault().post(new ServerEvent(ServerEvent.SERVER_CONNECTION));
@@ -158,15 +186,6 @@ public class RemoteServer extends NanoHTTPD {
                         return process.doResponse(session, fileName, session.getParms(), null);
                     }
                 }
-                if (fileName.equals("/transfer/files")) {
-                    return transferFiles();
-                }
-                if (fileName.equals("/transfer/progress")) {
-                    JsonObject progress = new JsonObject();
-                    progress.addProperty("name", transferProgressName);
-                    progress.addProperty("progress", transferProgress);
-                    return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, "application/json; charset=utf-8", progress.toString());
-                }
                 if (fileName.startsWith("/file/")) {
                     try {
                         String f = fileName.substring(6);
@@ -180,6 +199,11 @@ public class RemoteServer extends NanoHTTPD {
                                 return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.OK, NanoHTTPD.MIME_PLAINTEXT, fileList(root, f));
                             }
                         } else {
+                            // 外部存储没有该文件时回退到 APK 内置 assets（内置 json/bkystvbox.json 走这里）
+                            InputStream asset = openAsset(f);
+                            if (asset != null) {
+                                return NanoHTTPD.newChunkedResponse(NanoHTTPD.Response.Status.OK, assetMime(f), asset);
+                            }
                             return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.INTERNAL_ERROR, NanoHTTPD.MIME_PLAINTEXT, "File " + file + " not found!");
                         }
                     } catch (Throwable th) {
@@ -257,37 +281,7 @@ public class RemoteServer extends NanoHTTPD {
                 }
                 try {
                     Map<String, String> params = session.getParms();
-                    if (fileName.equals("/transfer/progress")) {
-                        transferProgressName = safeTransferName(params.get("name"));
-                        try { transferProgress = Math.max(0, Math.min(100, Integer.parseInt(params.get("progress")))); }
-                        catch (Throwable ignored) { transferProgress = 0; }
-                        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, NanoHTTPD.MIME_PLAINTEXT, "OK");
-                    } else if (fileName.equals("/transfer/upload")) {
-                        String name = safeTransferName(params.get("name"));
-                        for (String k : files.keySet()) {
-                            if ("file".equals(k) || k.startsWith("files-")) {
-                                String tmpFile = files.get(k);
-                                File tmp = new File(tmpFile);
-                                if (!name.isEmpty() && tmp.exists()) {
-                                    synchronized (RemoteServer.class) {
-                                        File target = uniqueTransferFile(name);
-                                        target.createNewFile();
-                                        FileUtils.copyFile(tmp, target);
-                                    }
-                                    transferProgress = 100;
-                                }
-                                if (tmp.exists()) tmp.delete();
-                            }
-                        }
-                        return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.OK, NanoHTTPD.MIME_PLAINTEXT, "OK");
-                    } else if (fileName.equals("/transfer/delete")) {
-                        String name = safeTransferName(params.get("name"));
-                        if (!name.isEmpty()) {
-                            File target = new File(getTransferDirectory(), name);
-                            if (target.exists() && target.isFile()) target.delete();
-                        }
-                        return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.OK, NanoHTTPD.MIME_PLAINTEXT, "OK");
-                    } else if (fileName.equals("/upload")) {
+                    if (fileName.equals("/upload")) {
                         String path = params.get("path");
                         for (String k : files.keySet()) {
                             if (k.startsWith("files-")) {
@@ -346,56 +340,6 @@ public class RemoteServer extends NanoHTTPD {
         }
         //default page: index.html
         return getRequestList.get(0).doResponse(session, "", null, null);
-    }
-
-    public static File getTransferDirectory() {
-        File dir = new File(Environment.getExternalStorageDirectory(), "TVBox/Transfer");
-        if (!dir.exists()) dir.mkdirs();
-        return dir;
-    }
-
-    private static String safeTransferName(String value) {
-        if (value == null) return "";
-        String name = value.replace('\\', '/');
-        int slash = name.lastIndexOf('/');
-        if (slash >= 0) name = name.substring(slash + 1);
-        name = name.trim();
-        if (name.length() == 0 || ".".equals(name) || "..".equals(name)) return "";
-        return name.replaceAll("[^a-zA-Z0-9._\\-一-龥() ]", "_");
-    }
-
-    private static synchronized File uniqueTransferFile(String name) {
-        File directory = getTransferDirectory();
-        File target = new File(directory, name);
-        if (!target.exists()) return target;
-        int dot = name.lastIndexOf('.');
-        String base = dot > 0 ? name.substring(0, dot) : name;
-        String extension = dot > 0 ? name.substring(dot) : "";
-        int index = 1;
-        do {
-            target = new File(directory, base + " (" + index + ")" + extension);
-            index++;
-        } while (target.exists());
-        return target;
-    }
-
-    private Response transferFiles() {
-        JsonArray array = new JsonArray();
-        File[] files = getTransferDirectory().listFiles();
-        if (files != null) {
-            Arrays.sort(files, new Comparator<File>() {
-                @Override public int compare(File a, File b) { return a.getName().compareToIgnoreCase(b.getName()); }
-            });
-            for (File file : files) {
-                if (!file.isFile()) continue;
-                JsonObject item = new JsonObject();
-                item.addProperty("name", file.getName());
-                item.addProperty("size", file.length());
-                item.addProperty("modified", file.lastModified());
-                array.add(item);
-            }
-        }
-        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, "application/json; charset=utf-8", array.toString());
     }
 
     private boolean isProxyRequest(String fileName, Map<String, String> params) {

@@ -71,6 +71,24 @@ public class App extends MultiDexApplication {
         } else if (Hawk.get(HawkConfig.PLAY_TYPE, 2) == 0) {
             Hawk.put(HawkConfig.PLAY_TYPE, 2);
         }
+        // 默认数据源：优先使用内置 json，其次使用远程 json
+        String savedApi = Hawk.get(HawkConfig.API_URL, "");
+        if (!Hawk.contains(HawkConfig.API_URL) || savedApi.isEmpty()
+                || REMOTE_API_URL.equals(savedApi)) {
+            Hawk.put(HawkConfig.API_URL, getDefaultApiUrl());
+        }
+    }
+
+    private static final String REMOTE_API_URL = "http://bnz4.ibkys.cn:81/bkystvbox.json";
+
+    private String getDefaultApiUrl() {
+        try {
+            // 检测内置配置文件是否存在
+            getAssets().open("json/bkystvbox.json").close();
+            return "clan://localhost/json/bkystvbox.json";
+        } catch (Exception e) {
+            return REMOTE_API_URL;
+        }
     }
 
     public static App getInstance() {

@@ -91,6 +91,8 @@ public class FastSearchActivity extends BaseActivity {
     private boolean isFilterMode = false;
     private String searchFilterKey = "";    // 过滤的key
     private HashMap<String, ArrayList<Movie.Video>> resultVods; // 搜索结果
+    private final List<Movie.Video> highMatchVods = new ArrayList<>();
+    private boolean showHighMatchResults = false;
     private final List<String> quickSearchWord = new ArrayList<>();
     private final Set<String> wordListNames = new HashSet<>();
     private int wordListVersion = 0;
@@ -547,6 +549,8 @@ public class FastSearchActivity extends BaseActivity {
         selectedWordName = "";
         filterResult(SEARCH_ALL_NAME);
         resultVods.clear();
+        highMatchVods.clear();
+        showHighMatchResults = false;
         searchFilterKey = "";
         isFilterMode = false;
         spNames.clear();
@@ -619,7 +623,8 @@ public class FastSearchActivity extends BaseActivity {
         searchRequestList.add(0, home);
 
 
-        ArrayList<SearchTask> searchTasks = new ArrayList<>();
+        ArrayList<SearchTask> fastSearchTasks = new ArrayList<>();
+        ArrayList<SearchTask> blockingSearchTasks = new ArrayList<>();
         ArrayList<String> hots = new ArrayList<>();
         hots.add(SEARCH_ALL_NAME);
 
@@ -631,9 +636,17 @@ public class FastSearchActivity extends BaseActivity {
             if (mCheckSources != null && !mCheckSources.containsKey(bean.getKey())) {
                 continue;
             }
-            searchTasks.add(new SearchTask(bean.getKey(), searchTitle, currentSearchToken));
+            SearchTask task = new SearchTask(bean.getKey(), searchTitle, currentSearchToken, isBlockingSearchSource(bean));
+            if (task.blocking) {
+                blockingSearchTasks.add(task);
+            } else {
+                fastSearchTasks.add(task);
+            }
             this.spNames.put(bean.getName(), bean.getKey());
         }
+        ArrayList<SearchTask> searchTasks = new ArrayList<>();
+        searchTasks.addAll(fastSearchTasks);
+        searchTasks.addAll(blockingSearchTasks);
 
         if (searchTasks.size() <= 0) {
             showEmpty();
@@ -672,6 +685,34 @@ public class FastSearchActivity extends BaseActivity {
         }
     }
 
+    private boolean matchSearchResult(String name, String searchTitle) {
+        if (TextUtils.isEmpty(name) || TextUtils.isEmpty(searchTitle)) return false;
+        searchTitle = searchTitle.trim();
+        String[] arr = searchTitle.split("\\s+");
+        int matchNum = 0;
+        for(String one : arr) {
+            if (name.contains(one)) matchNum++;
+        }
+        return matchNum == arr.length;
+    }
+
+    private boolean isExactSearchResult(Movie.Video video) {
+        return video != null && !TextUtils.isEmpty(video.name) && !TextUtils.isEmpty(searchTitle)
+                && TextUtils.equals(video.name.trim(), searchTitle.trim());
+    }
+
+    private boolean isHighMatchSearchResult(Movie.Video video) {
+        return video != null && !TextUtils.isEmpty(video.name) && !TextUtils.isEmpty(searchTitle)
+                && video.name.replaceAll("\\s+", "").startsWith(searchTitle.replaceAll("\\s+", ""));
+    }
+
+    private boolean shouldShowHighMatchResults() {
+        if (showHighMatchResults || searchAdapter.getData().size() > 0) return false;
+        int total = totalSearchCount.get();
+        int threshold = Math.min(SEARCH_THREAD_COUNT, total);
+        return threshold > 0 && total - allRunCount.get() >= threshold;
+    }
+
     private void addMainSearchResults(List<Movie.Video> data) {
         if (data == null || data.isEmpty()) return;
         if (searchAdapter.getData().size() > 0) {
@@ -693,20 +734,37 @@ public class FastSearchActivity extends BaseActivity {
         }
         releaseSearchSlotAndStartNext(sourceKey, absXml.searchToken);
         String lastSourceKey = "";
+        List<Movie.Video> exactData = new ArrayList<>();
+        List<Movie.Video> highData = new ArrayList<>();
 
         if (absXml != null && absXml.movie != null && absXml.movie.videoList != null && absXml.movie.videoList.size() > 0) {
-            List<Movie.Video> data = SearchHelper.sortSearchResults(absXml.movie.videoList, searchTitle);
-            for (Movie.Video video : data) {
+            for (Movie.Video video : absXml.movie.videoList) {
+                if (!matchSearchResult(video.name, searchTitle)) continue;
                 detailFallbackSearchResults.add(video);
                 if (!resultVods.containsKey(video.sourceKey)) {
                     resultVods.put(video.sourceKey, new ArrayList<Movie.Video>());
                 }
                 resultVods.get(video.sourceKey).add(video);
+                if (isHighMatchSearchResult(video)) {
+                    highMatchVods.add(video);
+                    highData.add(video);
+                }
+                if (isExactSearchResult(video)) {
+                    exactData.add(video);
+                }
                 if (!TextUtils.equals(video.sourceKey, lastSourceKey)) {
                     lastSourceKey = this.addWordAdapterIfNeed(video.sourceKey);
                 }
             }
-            addMainSearchResults(data);
+        }
+
+        if (showHighMatchResults) {
+            addMainSearchResults(highData);
+        } else if (!exactData.isEmpty()) {
+            addMainSearchResults(exactData);
+        } else if (shouldShowHighMatchResults()) {
+            showHighMatchResults = true;
+            addMainSearchResults(new ArrayList<>(highMatchVods));
         }
 
         finishSearchIfDone();
@@ -869,7 +927,8 @@ public class FastSearchActivity extends BaseActivity {
         startedSearchKeys.clear();
         releasedSearchKeys.clear();
         for (String sourceKey : sourceKeys) {
-            waitingSearchTasks.add(new SearchTask(sourceKey, searchTitle, currentSearchToken));
+            SourceBean bean = ApiConfig.get().getSource(sourceKey);
+            waitingSearchTasks.add(new SearchTask(sourceKey, searchTitle, currentSearchToken, isBlockingSearchSource(bean)));
         }
         if (searchExecutorService == null || searchExecutorService.isShutdown()) {
             searchExecutorService = createSearchExecutor();
@@ -942,6 +1001,10 @@ public class FastSearchActivity extends BaseActivity {
         synchronized (pendingSearchKeys) {
             return pendingSearchKeys.contains(sourceKey);
         }
+    }
+
+    private boolean isBlockingSearchSource(SourceBean bean) {
+        return bean == null || bean.getType() == 3;
     }
 
     private List<String> getPendingSearchKeys() {
@@ -1032,11 +1095,13 @@ public class FastSearchActivity extends BaseActivity {
         private final String sourceKey;
         private final String title;
         private final String searchToken;
+        private final boolean blocking;
 
-        private SearchTask(String sourceKey, String title, String searchToken) {
+        private SearchTask(String sourceKey, String title, String searchToken, boolean blocking) {
             this.sourceKey = sourceKey;
             this.title = title;
             this.searchToken = searchToken;
+            this.blocking = blocking;
         }
 
         @Override

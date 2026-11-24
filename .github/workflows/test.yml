@@ -91,10 +91,9 @@ jobs:
           sed -i '$a\RELEASE_KEY_PASSWORD=TVBoxOSC'         ./gradle.properties
           sed -i 's/^#\(org.gradle.jvmargs=.*\)/\1/'        ./gradle.properties
       - uses: actions/setup-java@v4
-        if: ${{ matrix.java_ver }}
         with:
           distribution: temurin
-          java-version: ${{ matrix.java_ver }}
+          java-version: ${{ matrix.java_ver || '17' }}
       - uses: gradle/actions/setup-gradle@v4
         if: ${{ env.commit }}
       - name: Build With Gradle
