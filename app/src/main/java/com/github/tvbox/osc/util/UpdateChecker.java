@@ -3,6 +3,7 @@ package com.github.tvbox.osc.util;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.ProgressDialog;
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
@@ -54,6 +55,15 @@ public class UpdateChecker {
         check(activity, true);
     }
 
+    /**
+     * 查询最新版本的异步回调。
+     */
+    public interface LatestCallback {
+        void onLatest(String tag, String notes, String apkUrl);
+
+        void onFailed(String message);
+    }
+
     private static void check(final Activity activity, final boolean manual) {
         if (activity == null || activity.isFinishing()) {
             return;
@@ -68,7 +78,34 @@ public class UpdateChecker {
             }
         }
         checked = true;
-        // 先用发布页跳转取版本号（无频率限制），失败再走 GitHub API（能拿到更新说明）
+        queryLatest(new LatestCallback() {
+            @Override
+            public void onLatest(String tag, String notes, String apkUrl) {
+                if (!manual && isSkipped(tag)) {
+                    return;
+                }
+                if (!isNewer(activity, tag)) {
+                    if (manual) {
+                        toast(activity, "当前已是最新版本 " + tag);
+                    }
+                    return;
+                }
+                showUpdateDialog(activity, tag, notes, apkUrl);
+            }
+
+            @Override
+            public void onFailed(String message) {
+                if (manual) {
+                    toast(activity, message);
+                }
+            }
+        });
+    }
+
+    /**
+     * 查询最新版本：先用发布页跳转取版本号（无频率限制），失败再走 GitHub API（能拿到更新说明）。
+     */
+    public static void queryLatest(final LatestCallback callback) {
         OkGo.<String>get(LATEST_PAGE)
                 .headers("Accept", "text/html")
                 .execute(new StringCallback() {
@@ -76,17 +113,17 @@ public class UpdateChecker {
                     public void onSuccess(Response<String> response) {
                         String tag = tagFromUrl(response.getRawResponse().request().url().toString());
                         if (tag == null) {
-                            checkByApi(activity, manual);
+                            queryByApi(callback);
                             return;
                         }
-                        handleUpdate(activity, tag, "", apkUrlOfTag(tag), manual);
+                        callback.onLatest(tag, "", apkUrlOfTag(tag));
                     }
 
                     @Override
                     public void onError(Response<String> response) {
                         LOG.e("update redirect check error: "
                                 + (response == null ? "null" : response.code()));
-                        checkByApi(activity, manual);
+                        queryByApi(callback);
                     }
                 });
     }
@@ -94,7 +131,7 @@ public class UpdateChecker {
     /**
      * 备用方案：GitHub API（匿名每小时 60 次，同一出口 IP 共享，可能被限流）。
      */
-    private static void checkByApi(final Activity activity, final boolean manual) {
+    private static void queryByApi(final LatestCallback callback) {
         OkGo.<String>get(LATEST_API)
                 .headers("Accept", "application/vnd.github+json")
                 .execute(new StringCallback() {
@@ -103,20 +140,18 @@ public class UpdateChecker {
                         try {
                             JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
                             if (!root.has("tag_name")) {
-                                if (manual) {
-                                    toast(activity, "未获取到版本信息，请稍后重试");
-                                }
+                                callback.onFailed("未获取到版本信息，请稍后重试");
                                 return;
                             }
                             String tag = root.get("tag_name").getAsString();
                             String notes = root.has("body") && !root.get("body").isJsonNull()
                                     ? root.get("body").getAsString() : "";
-                            handleUpdate(activity, tag, notes, pickAsset(root), manual);
+                            String apkUrl = pickAsset(root);
+                            callback.onLatest(tag, notes,
+                                    apkUrl == null || apkUrl.isEmpty() ? apkUrlOfTag(tag) : apkUrl);
                         } catch (Exception e) {
                             LOG.e("update check parse error: " + e.getMessage());
-                            if (manual) {
-                                toast(activity, "未获取到版本信息，请稍后重试");
-                            }
+                            callback.onFailed("未获取到版本信息，请稍后重试");
                         }
                     }
 
@@ -124,25 +159,23 @@ public class UpdateChecker {
                     public void onError(Response<String> response) {
                         LOG.e("update check request error: "
                                 + (response == null ? "null" : response.code()));
-                        if (manual) {
-                            toast(activity, "检查更新失败，请检查网络");
-                        }
+                        callback.onFailed("检查更新失败，请检查网络");
                     }
                 });
     }
 
-    private static void handleUpdate(final Activity activity, String tag, String notes,
-                                     String apkUrl, boolean manual) {
-        if (!manual && isSkipped(tag)) {
+    /**
+     * 直接下载指定安装包并拉起安装（关于页“升级到最新”使用）。
+     */
+    public static void downloadAndInstallLatest(Activity activity, String apkUrl) {
+        if (activity == null || activity.isFinishing()) {
             return;
         }
-        if (!isNewer(activity, tag)) {
-            if (manual) {
-                toast(activity, "当前已是最新版本 " + tag);
-            }
+        if (apkUrl == null || apkUrl.isEmpty()) {
+            openReleasesPage(activity);
             return;
         }
-        showUpdateDialog(activity, tag, notes, apkUrl);
+        downloadAndInstall(activity, apkUrl);
     }
 
     /**
@@ -173,21 +206,9 @@ public class UpdateChecker {
      * 按固定命名规则（与 CI 产物一致）拼出安装包地址，通用包始终存在。
      */
     private static String apkUrlOfTag(String tag) {
-        String flavor = isPythonFlavor() ? "python" : "java";
+        String flavor = isPythonBuild() ? "python" : "java";
         return "https://github.com/" + REPO + "/releases/download/" + tag + "/"
                 + "NingJiaTV_release-" + flavor + ".apk";
-    }
-
-    /**
-     * python flavor 才会打包 Chaquopy 运行时，据此判断该下哪个安装包。
-     */
-    private static boolean isPythonFlavor() {
-        try {
-            Class.forName("com.chaquo.python.Python");
-            return true;
-        } catch (Throwable ignored) {
-            return false;
-        }
     }
 
     private static void toast(Activity activity, String message) {
@@ -203,11 +224,11 @@ public class UpdateChecker {
         return tag.equals(Hawk.get(HawkConfig.UPDATE_SKIP_VERSION, ""));
     }
 
-    private static boolean isNewer(Activity activity, String tag) {
+    public static boolean isNewer(Context context, String tag) {
         try {
             String remote = tag.replaceAll("^[vV]", "");
-            String current = activity.getPackageManager()
-                    .getPackageInfo(activity.getPackageName(), 0).versionName;
+            String current = context.getPackageManager()
+                    .getPackageInfo(context.getPackageName(), 0).versionName;
             return compareVersion(remote, current) > 0;
         } catch (Exception e) {
             return false;
